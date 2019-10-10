@@ -1,0 +1,6 @@
+19-10-10
+- Takes an API key and a pair
+- When run, will import interval_mins candle data in such a way where the next
+    candle will come in 1-2 minutes
+- On the first new candle, init() will be ran
+- On the following new candles, tick() will be ran
