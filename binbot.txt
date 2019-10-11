@@ -4,3 +4,20 @@
     candle will come in 1-2 minutes
 - On the first new candle, init() will be ran
 - On the following new candles, tick() will be ran
+
+19-10-11
+On each tick, I need:
+(ins)
+- Market (exchange/pair)
+- Interval
+- OHLCV data (candle data)
+(portfolios)
+- Positions (all owned coins or at least the coins the bot is using.)
+
+On each tick I would like to take care of things like importing the portfolio,
+checking for deposits, withdrawals, and trades, and calculating profits. I also
+want a built in buy and sell function and pretty much anything else to do with
+communicating with binance.
+
+Currently init is ran right at the start, then tick is run 1-2 minutes later and
+every interval mins after that.
