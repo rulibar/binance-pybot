@@ -48,14 +48,22 @@ def get_historical_candles_method(symbol, interval, start_str):
     return data
 
 def get_historical_candles():
+    """
+    I want at least 500 30 minute candles. (15000 1m candles)
+    I hope it's okay to request massive amounts of data from Binance...
+    I may want to run longer bots someday, up to 4 hrs. (120000 1m candles)
+    In general I'd like to get at least 500*n 1m candles where n is the interval
+    Let's go with 600, (60 for testing)
+    """
     # Get 1m data over the past week
     # Remove recent data so that the next tick comes in 1-2 minutes
-    data = get_historical_candles_method(pair, "1m", "2 days ago UTC")
+    data = get_historical_candles_method(pair, "1m", "{} minutes ago UTC".format(60*interval_mins))
+    #data = get_historical_candles_method(pair, "1m", "{} minutes ago UTC".format(600*interval_mins))
     for i in range(interval_mins - 1): data.pop()
     for i in range(len(data)): data[i] = get_candle(data[i])
     return data
 
-def compile_raw(candles_raw):
+def compile_raw(candles_raw) -> list:
     # Compile the 1m candles_raw into 30m candles
     candle_new = dict()
     candles = list()
@@ -112,7 +120,7 @@ def get_current_candles():
 print("Getting historical candles.\n.\t.\t.")
 candles_raw = get_historical_candles()
 candles = compile_raw(candles_raw)
-candles_raw = shrink(candles_raw, 10*interval_mins)
+candles_raw = shrink(candles_raw, 2*interval_mins)
 print("Historical candles loaded.")
 
 # Get current candles
@@ -130,18 +138,16 @@ def tick():
 init()
 
 while True:
-    data = get_historical_candles_method("BTCUSDT", "1m", "{} minutes ago UTC".format(interval_mins))
-    print(get_candle(data.pop()))
-    data_top = get_candle(data[len(data) - 1])
+    data = get_historical_candles_method("BTCUSDT", "1m", "{} minutes ago UTC".format(2))
+    data_top = get_candle(data[1])
+    # New raw candle?
     if data_top["ts_end"] != candles_raw[len(candles_raw) - 1]["ts_end"]:
-        print("new raw candle")
-        print("~ {}".format(data_top))
         unused_1m += 1
         candles_raw.append(data_top)
-        candles_raw = candles_raw[len(candles_raw) - 10*interval_mins:]
+        candles_raw = candles_raw[len(candles_raw) - 2*interval_mins:]
 
+    # New candle, new tick?
     if unused_1m == interval_mins:
-        print("new candle")
         candle_new = dict()
         for i in range(interval_mins):
             candle_raw = candles_raw[len(candles_raw) - 1 - i]
@@ -160,9 +166,8 @@ while True:
                 candle_new["open"] = candle_raw["open"]
                 candle_new["ts_start"] = candle_raw["ts_start"]
                 candles.append(candle_new)
-                print("~ {}".format(candle_new))
                 unused_1m = 0
-                candles = shrink(candles, 300*interval_mins)
+                candles = shrink(candles, 5000)
 
         tick()
 
