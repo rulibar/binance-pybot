@@ -19,12 +19,12 @@ ticks = 0; days = 0
 
 client = Client(api_key, api_secret)
 
-def shrink(given_array, size):
-    if len(given_array) > size:
-        return given_array[-size:]
-    return given_array
+def shrink(list_in, size) -> list:
+    if len(list_in) > size:
+        return list_in[-size:]
+    return list_in
 
-def get_candle(data):
+def get_candle(data) -> dict:
     # data is a kline list from Binance
     candle = {
         "ts_start": int(data[0]),
@@ -37,8 +37,7 @@ def get_candle(data):
     }
     return candle
 
-##### Preliminary section
-def get_historical_candles_method(symbol, interval, start_str):
+def get_historical_candles_method(symbol, interval, start_str) -> list:
     # Get historical candles without connection problems breaking the program
     while True:
         try:
@@ -51,7 +50,7 @@ def get_historical_candles_method(symbol, interval, start_str):
 
     return data
 
-def get_historical_candles():
+def get_historical_candles() -> list:
     """
     Get enough 1m data to compile 600 historical candles
     Remove interval_mins - 2 1m data so that the next candle will come in 1-2 mins
@@ -90,7 +89,7 @@ def compile_raw(candles_raw) -> list:
 
     return candles[::-1]
 
-def get_current_candles():
+def get_current_candles() -> int:
     # Update candles_raw with recent 1m candles
     # Return how many 1m candles were imported
     unused_1m = -1
@@ -135,7 +134,7 @@ init()
 
 while True:
     data = get_historical_candles_method("BTCUSDT", "1m", "{} minutes ago UTC".format(2))
-    data_top = get_candle(data[-1])
+    data_top = get_candle(data[0])
     # New raw candle?
     if data_top["ts_end"] != candles_raw[len(candles_raw) - 1]["ts_end"]:
         unused_1m += 1
