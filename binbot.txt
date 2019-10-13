@@ -42,3 +42,43 @@ could use that to monitor all of the coins.
 
 Anyways, for now I'll just monitor the trading account like on CT. This will be
 easier.
+
+10-13
+If I keep calling vars like exchange, pair, candles etc inside of functions (tick)
+which I didn't pass those vars into, it causes bugs.
+
+If I try to update the value of one of these vars, it creates a temporary var
+inside the function so that the outside var is not changed.
+
+If I try to print a var, then change its value, I'll get a bug because the
+var I'm trying to print, the temporary var, hasn't been created yet. Even though
+the outer var is perfectly defined.
+
+To avoid these issues, I need to pass the var into the function. Then I can
+update its value permanently and the var is always defined.
+
+However, I have a lot of vars which I need to pass in. So I think instead of
+passing them all individually, I'll create an Instance class which stores all
+this info, and then I can just pass the class instance into the function.
+
+***
+
+Test: Can I change a value in tick and then still see the new value on the next
+tick? Can I print a var and then change its value afterwords?
+
+***
+
+Also, I want the candles to be an attribute of the Instance class. Because each
+trading instance will be using its own candle data.
+
+As for the portfolio..
+
+I could track the whole account and all dws/trades but then how do I run multiple
+instances? I would have to stop the portfolio tracker and all of the running
+bots every time I want to add a new one.
+
+If I just import portfolio data for the asset and base and save it as a part of
+the Instance class then I can run different bots in different terminals, but I
+have to program the logic to see dws/trades.
+
+Well actually maybe I can still import dws/trades information.
