@@ -6,14 +6,18 @@ from binance.client import Client
 from datetime import datetime
 import time
 
-pair = "BTCUSDT"
-interval_mins = 30
-
+exchange = "binance"
 api_key = ""
 api_secret = ""
 
-client = Client(api_key, api_secret)
+asset = "BTC"; base = "USDT"
+pair = asset + base
+interval_mins = 30
 interval_str = str(interval_mins) + "m"
+
+ticks = 0; days = 0
+
+client = Client(api_key, api_secret)
 
 def shrink(given_array, size):
     if len(given_array) > size:
@@ -49,14 +53,9 @@ def get_historical_candles_method(symbol, interval, start_str):
 
 def get_historical_candles():
     """
-    I want at least 500 30 minute candles. (15000 1m candles)
-    I hope it's okay to request massive amounts of data from Binance...
-    I may want to run longer bots someday, up to 4 hrs. (120000 1m candles)
-    In general I'd like to get at least 500*n 1m candles where n is the interval
-    Let's go with 600, (60 for testing)
+    Get enough 1m data to compile 600 historical candles
+    Remove interval_mins - 2 1m data so that the next candle will come in 1-2 mins
     """
-    # Get 1m data over the past week
-    # Remove recent data so that the next tick comes in 1-2 minutes
     data = get_historical_candles_method(pair, "1m", "{} minutes ago UTC".format(60*interval_mins))
     #data = get_historical_candles_method(pair, "1m", "{} minutes ago UTC".format(600*interval_mins))
     for i in range(interval_mins - 1): data.pop()
@@ -95,6 +94,7 @@ def get_current_candles():
     # Update candles_raw with recent 1m candles
     # Return how many 1m candles were imported
     unused_1m = -1
+    str_out = str()
     data = get_historical_candles_method("BTCUSDT", "1m", "{} minutes ago UTC".format(2*interval_mins))
     data.pop()
     for i in range(len(data)):
@@ -105,15 +105,12 @@ def get_current_candles():
             unused_1m += 1
             continue
 
-        if unused_1m == 1:
-            candles_raw.append(candle_raw)
-            print("new raw candles")
-            print("~ {}".format(candle_raw))
-            continue
         if unused_1m > 0:
             candles_raw.append(candle_raw)
-            print("~ {}".format(candle_raw))
+            str_out += "~ {}\n".format(candle_raw)
 
+    print("{} current 1m candles.".format(unused_1m))
+    print(str_out[:-2])
     return unused_1m
 
 # Get historical candles
@@ -125,7 +122,6 @@ print("Historical candles loaded.")
 
 # Get current candles
 unused_1m = get_current_candles()
-print("{} current 1m candles.".format(unused_1m))
 
 ##### Algorithm section
 
@@ -139,7 +135,7 @@ init()
 
 while True:
     data = get_historical_candles_method("BTCUSDT", "1m", "{} minutes ago UTC".format(2))
-    data_top = get_candle(data[1])
+    data_top = get_candle(data[-1])
     # New raw candle?
     if data_top["ts_end"] != candles_raw[len(candles_raw) - 1]["ts_end"]:
         unused_1m += 1
@@ -169,6 +165,8 @@ while True:
                 unused_1m = 0
                 candles = shrink(candles, 5000)
 
+        ticks += 1
+        days = (ticks - 1) * interval_mins / (60 * 24)
         tick()
 
     time.sleep(2)
