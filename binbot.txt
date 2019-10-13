@@ -21,3 +21,24 @@ communicating with binance.
 
 Currently init is ran right at the start, then tick is run 1-2 minutes later and
 every interval mins after that.
+
+positions structure:
+positions = {
+    "asset1": "amt",
+    "asset2": "amt",
+    ...
+}
+
+I don't have the total account size. I also don't have the prices for each asset.
+I do have the price of the pair though, from ins. So I can calculate the size
+of the trading account in terms of the base coin.
+
+If I wanted to monitor all coins it would be hard to determine dw or other trade
+status.. If I only monitor the trading account it will be about the same as on
+ct.
+
+However, I could use my ability to get info about dws and other trades... And I
+could use that to monitor all of the coins.
+
+Anyways, for now I'll just monitor the trading account like on CT. This will be
+easier.
