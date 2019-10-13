@@ -19,6 +19,29 @@ ticks = 0; days = 0
 
 client = Client(api_key, api_secret)
 
+"""
+Instance attributes:
+exchange
+base, asset, pair
+interval
+ticks, days
+candles
+positions
+"""
+
+class Instance:
+    def __init__(self, exchange, asset, base, interval_mins):
+        self.exchange = str(exchange)
+        self.asset = str(asset); self.base = str(base)
+        self.pair = self.asset + self.base
+        self.interval = int(interval_mins)
+        self.ticks = 0; self.days = 0
+
+    def tick(self):
+        self.ticks += 1
+        self.days = (self.ticks - 1) * self.interval / (60 * 24)
+
+
 def shrink(list_in, size) -> list:
     if len(list_in) > size:
         return list_in[-size:]
@@ -127,9 +150,13 @@ unused_1m = get_current_candles()
 def init():
     print("~~ Init ~~")
 
-def tick():
+def tick(ins):
     print("~~ Tick ~~")
+    ins.tick()
+    print(ins.ticks)
+    ins.ticks += 10
 
+ins = Instance(exchange, asset, base, interval_mins)
 init()
 
 while True:
@@ -164,8 +191,6 @@ while True:
                 unused_1m = 0
                 candles = shrink(candles, 5000)
 
-        ticks += 1
-        days = (ticks - 1) * interval_mins / (60 * 24)
-        tick()
+        tick(ins)
 
     time.sleep(2)
