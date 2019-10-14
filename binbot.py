@@ -105,8 +105,8 @@ class Instance:
 
     def compile_raw(self, candles_raw) -> list:
         # Compile the 1m candles_raw into 30m candles
-        candle_new = dict()
         candles = list()
+        candle_new = dict()
         for i in range(len(candles_raw)):
             order = (i + 1) % self.interval
             # [1, 2, ..., interval - 1, 0, 1, 2, ...]
@@ -166,7 +166,23 @@ class Instance:
             locked = float(data[i]["locked"])
             total = free + locked
             positions[asset] = total
-            
+
+        try:
+            asset_diff = positions[self.asset] - self.positions[self.asset]
+            base_diff = positions[self.base] - self.positions[self.base]
+            print(asset_diff, base_diff)
+            print(asset_diff == 0)
+        except: return positions
+
+        if asset_diff != 0 and base_diff != 0:
+            avg_price = abs(asset_diff/base_diff)
+            print("Avg price:", avg_price)
+            print(self.candles[-1]["low"], self.candles[-1]["high"])
+        elif asset_diff != 0:
+            print("Change in assets detected.", asset_diff)
+        elif base_diff != 0:
+            print("Change in base detected.", base_diff)
+
         return positions
 
     def ping(self):
