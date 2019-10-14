@@ -36,52 +36,6 @@ class Instance:
 
         self.positions = self.get_positions()
 
-    def init(self):
-        print("~~ Init ~~")
-
-    def tick(self):
-        print("~~ Tick ~~")
-        self.ticks += 1
-        self.days = (self.ticks - 1) * self.interval / (60 * 24)
-        print(self.ticks)
-        print(self.days)
-        print(self.exchange)
-        print(self.pair)
-        print(self.interval)
-        print(self.candles[-1])
-        print(self.positions)
-
-    def shrink_list(self, list_in, size) -> list:
-        if len(list_in) > size:
-            return list_in[-size:]
-        return list_in
-
-    def get_candle(self, data) -> dict:
-        # data is a kline list from Binance
-        candle = {
-            "ts_start": int(data[0]),
-            "open": float(data[1]),
-            "high": float(data[2]),
-            "low": float(data[3]),
-            "close": float(data[4]),
-            "volume": float(data[5]),
-            "ts_end": int(data[6])
-        }
-        return candle
-
-    def get_historical_candles_method(self, symbol, interval, start_str) -> list:
-        # Get historical candles without connection problems breaking the program
-        while True:
-            try:
-                data = client.get_historical_klines(symbol, interval, start_str)
-                break
-            except:
-                print("Error: An unknown error occurred while getting candles.")
-                print("Sleeping for 2 seconds and then retrying.")
-                time.sleep(2)
-
-        return data
-
     def _candles_raw_init(self) -> list:
         """
         Get enough 1m data to compile 600 historical candles
@@ -143,6 +97,52 @@ class Instance:
         print("{} current 1m candles.".format(raw_unused))
         print(str_out[:-2])
         return raw_unused
+
+    def get_historical_candles_method(self, symbol, interval, start_str) -> list:
+        # Get historical candles without connection problems breaking the program
+        while True:
+            try:
+                data = client.get_historical_klines(symbol, interval, start_str)
+                break
+            except:
+                print("Error: An unknown error occurred while getting candles.")
+                print("Sleeping for 2 seconds and then retrying.")
+                time.sleep(2)
+
+        return data
+
+    def shrink_list(self, list_in, size) -> list:
+        if len(list_in) > size:
+            return list_in[-size:]
+        return list_in
+
+    def get_candle(self, data) -> dict:
+        # data is a kline list from Binance
+        candle = {
+            "ts_start": int(data[0]),
+            "open": float(data[1]),
+            "high": float(data[2]),
+            "low": float(data[3]),
+            "close": float(data[4]),
+            "volume": float(data[5]),
+            "ts_end": int(data[6])
+        }
+        return candle
+
+    def init(self):
+        print("~~ Init ~~")
+
+    def tick(self):
+        print("~~ Tick ~~")
+        self.ticks += 1
+        self.days = (self.ticks - 1) * self.interval / (60 * 24)
+        print(self.ticks)
+        print(self.days)
+        print(self.exchange)
+        print(self.pair)
+        print(self.interval)
+        print(self.candles[-1])
+        print(self.positions)
 
     def get_positions(self) -> dict:
         positions = {self.asset: 0, self.base: 0}
