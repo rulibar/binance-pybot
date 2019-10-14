@@ -18,16 +18,6 @@ interval_str = str(interval_mins) + "m"
 
 ticks = 0; days = 0
 
-"""
-Instance attributes:
-exchange
-base, asset, pair
-interval
-ticks, days
-candles
-positions
-"""
-
 class Instance:
     def __init__(self, asset, base, interval_mins):
         self.exchange = "binance"
@@ -38,10 +28,10 @@ class Instance:
         print("New trader instance started on {} {}m.".format(self.pair, self.interval))
 
         print("Getting historical candles...")
-        self.candles_raw = self.get_historical_candles()
-        self.candles = self.compile_raw(self.candles_raw)
+        self.candles_raw = self._candles_raw_init()
+        self.candles = self._candles_init(self.candles_raw)
         self.candles_raw = self.shrink_list(self.candles_raw, 2*self.interval)
-        self.candles_raw_unused = self.get_current_candles()
+        self.candles_raw_unused = self._get_raw_unused()
         print("Historical candles loaded.")
 
         self.positions = self.get_positions()
@@ -92,7 +82,7 @@ class Instance:
 
         return data
 
-    def get_historical_candles(self) -> list:
+    def _candles_raw_init(self) -> list:
         """
         Get enough 1m data to compile 600 historical candles
         Remove interval_mins - 2 1m data so that the next candle will come in 1-2 mins
@@ -103,7 +93,7 @@ class Instance:
         for i in range(len(data)): data[i] = self.get_candle(data[i])
         return data
 
-    def compile_raw(self, candles_raw) -> list:
+    def _candles_init(self, candles_raw) -> list:
         # Compile the 1m candles_raw into 30m candles
         candles = list()
         candle_new = dict()
@@ -131,28 +121,28 @@ class Instance:
 
         return candles[::-1]
 
-    def get_current_candles(self) -> int:
+    def _get_raw_unused(self) -> int:
         # Update candles_raw with recent 1m candles
         # Return how many 1m candles were imported
-        unused_1m = -1
+        raw_unused = -1
         str_out = str()
         data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2*self.interval))
         data.pop()
         for i in range(len(data)):
             candle_raw = self.get_candle(data[i])
-            if unused_1m > -1:
-                unused_1m += 1
+            if raw_unused > -1:
+                raw_unused += 1
             if candle_raw["ts_end"] == self.candles[-1]["ts_end"]:
-                unused_1m += 1
+                raw_unused += 1
                 continue
 
-            if unused_1m > 0:
+            if raw_unused > 0:
                 self.candles_raw.append(candle_raw)
                 str_out += "~ {}\n".format(candle_raw)
 
-        print("{} current 1m candles.".format(unused_1m))
+        print("{} current 1m candles.".format(raw_unused))
         print(str_out[:-2])
-        return unused_1m
+        return raw_unused
 
     def get_positions(self) -> dict:
         positions = {self.asset: 0, self.base: 0}
