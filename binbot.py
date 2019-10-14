@@ -6,18 +6,17 @@ from binance.client import Client
 from datetime import datetime
 import time
 
-exchange = "binance"
 api_key = ""
 api_secret = ""
+client = Client(api_key, api_secret)
 
 asset = "BTC"; base = "USDT"
 pair = asset + base
+
 interval_mins = 30
 interval_str = str(interval_mins) + "m"
 
 ticks = 0; days = 0
-
-client = Client(api_key, api_secret)
 
 """
 Instance attributes:
@@ -30,19 +29,22 @@ positions
 """
 
 class Instance:
-    def __init__(self, exchange, asset, base, interval_mins):
-        self.exchange = str(exchange)
+    def __init__(self, asset, base, interval_mins):
+        self.exchange = "binance"
         self.asset = str(asset); self.base = str(base)
         self.pair = self.asset + self.base
         self.interval = int(interval_mins)
         self.ticks = 0; self.days = 0
+        print("New trader instance started on {} {}m.".format(self.pair, self.interval))
 
-        print("Getting historical candles.\n.\t.\t.")
+        print("Getting historical candles...")
         self.candles_raw = self.get_historical_candles()
         self.candles = self.compile_raw(self.candles_raw)
         self.candles_raw = self.shrink_list(self.candles_raw, 2*self.interval)
         self.candles_raw_unused = self.get_current_candles()
         print("Historical candles loaded.")
+
+        self.positions = self.get_positions()
 
     def init(self):
         print("~~ Init ~~")
@@ -57,6 +59,7 @@ class Instance:
         print(self.pair)
         print(self.interval)
         print(self.candles[-1])
+        print(self.positions)
 
     def shrink_list(self, list_in, size) -> list:
         if len(list_in) > size:
@@ -151,21 +154,32 @@ class Instance:
         print(str_out[:-2])
         return unused_1m
 
+    def get_positions(self) -> dict:
+        positions = {self.asset: 0, self.base: 0}
+
+        data = client.get_account()
+        data = data["balances"]
+        for i in range(len(data)):
+            asset = data[i]["asset"]
+            if asset not in {self.asset, self.base}: continue
+            free = float(data[i]["free"])
+            locked = float(data[i]["locked"])
+            total = free + locked
+            positions[asset] = total
+            
+        return positions
+
     def ping(self):
         data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2))
-        print(self.get_candle(data[-1]))
         data_top = self.get_candle(data[0])
-        #print(data_top)
         # New raw candle?
         if data_top["ts_end"] != self.candles_raw[-1]["ts_end"]:
-            print("new raw candle")
             self.candles_raw_unused += 1
             self.candles_raw.append(data_top)
             self.candles_raw = self.candles_raw[-2*self.interval:]
 
         # New candle, new tick?
         if self.candles_raw_unused == self.interval:
-            print("new candle")
             candle_new = dict()
             for i in range(self.interval):
                 candle_raw = self.candles_raw[-1 - i]
@@ -187,9 +201,10 @@ class Instance:
                     self.candles_raw_unused = 0
                     self.candles = self.shrink_list(self.candles, 5000)
 
+            self.positions = self.get_positions()
             self.tick()
 
-ins = Instance(exchange, asset, base, interval_mins)
+ins = Instance(asset, base, interval_mins)
 
 ins.init()
 while True:
