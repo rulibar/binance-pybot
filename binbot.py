@@ -12,11 +12,7 @@ client = Client(api_key, api_secret)
 
 asset = "BTC"; base = "USDT"
 pair = asset + base
-
 interval_mins = 30
-interval_str = str(interval_mins) + "m"
-
-ticks = 0; days = 0
 
 class Instance:
     def __init__(self, asset, base, interval_mins):
@@ -112,8 +108,7 @@ class Instance:
         return data
 
     def shrink_list(self, list_in, size) -> list:
-        if len(list_in) > size:
-            return list_in[-size:]
+        if len(list_in) > size: return list_in[-size:]
         return list_in
 
     def get_candle(self, data) -> dict:
@@ -144,6 +139,21 @@ class Instance:
         print(self.candles[-1])
         print(self.positions)
 
+    def get_dwts(self, asset_diff, base_diff):
+        print("get_dwts", asset_diff, base_diff)
+
+        if asset_diff != 0 and base_diff != 0:
+            avg_price = abs(base_diff / asset_diff)
+            print("Possible trade detected.")
+            print("Avg price:", avg_price)
+            print(self.candles[-1]["low"], self.candles[-1]["high"])
+        elif asset_diff != 0:
+            print("Change in assets detected.", asset_diff)
+        elif base_diff != 0:
+            print("Change in base detected.", base_diff)
+
+        return
+
     def get_positions(self) -> dict:
         positions = {self.asset: 0, self.base: 0}
 
@@ -160,18 +170,9 @@ class Instance:
         try:
             asset_diff = positions[self.asset] - self.positions[self.asset]
             base_diff = positions[self.base] - self.positions[self.base]
-            print(asset_diff, base_diff)
-            print(asset_diff == 0)
         except: return positions
 
-        if asset_diff != 0 and base_diff != 0:
-            avg_price = abs(asset_diff/base_diff)
-            print("Avg price:", avg_price)
-            print(self.candles[-1]["low"], self.candles[-1]["high"])
-        elif asset_diff != 0:
-            print("Change in assets detected.", asset_diff)
-        elif base_diff != 0:
-            print("Change in base detected.", base_diff)
+        self.get_dwts(asset_diff, base_diff)
 
         return positions
 
