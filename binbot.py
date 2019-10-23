@@ -131,17 +131,43 @@ class Instance:
         print("~~ Tick ~~")
         self.ticks += 1
         self.days = (self.ticks - 1) * self.interval / (60 * 24)
-        print(self.ticks)
-        print(self.days)
-        print(self.exchange)
-        print(self.pair)
-        print(self.interval)
         print(self.candles[-1])
         print(self.positions)
 
     def get_dwts(self, asset_diff, base_diff):
         print("get_dwts", asset_diff, base_diff)
 
+        ts_end = self.candles[-2]['ts_end']
+
+        # Get dws
+        deposits = client.get_deposit_history(startTime = ts_end)['depositList']
+        withdrawals = client.get_withdraw_history(startTime = ts_end)['withdrawList']
+        for i in range(len(deposits)):
+            if deposits[i]['asset'] not in {asset, base}: deposits.pop(i)
+        for i in range(len(withdrawals)):
+            if withdrawals[i]['asset'] not in {asset, base}: withdrawals.pop(i)
+
+        if len(deposits) > 0:
+            print("{} new deposit(s) found.".format(len(deposits)))
+            for deposit in deposits: print(deposit)
+
+        if len(withdrawals) > 0:
+            print("{} new withdrawal(s) found.".format(len(withdrawals)))
+            for withdrawal in withdrawals: print(withdrawal)
+
+        # Get trades
+        trades = list(reversed(client.get_my_trades(symbol = self.pair, limit = 20)))
+        for i in range(len(trades)):
+            trade = trades[i]
+            if trade['time'] < ts_end:
+                trades = trades[:i]
+                break
+
+        if len(trades) > 0:
+            print("{} new trade(s) found.".format(len(trades)))
+            for trade in trades: print(trade)
+
+        """
         if asset_diff != 0 and base_diff != 0:
             avg_price = abs(base_diff / asset_diff)
             print("Possible trade detected.")
@@ -151,6 +177,7 @@ class Instance:
             print("Change in assets detected.", asset_diff)
         elif base_diff != 0:
             print("Change in base detected.", base_diff)
+        """
 
         return
 
