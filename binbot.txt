@@ -82,3 +82,33 @@ the Instance class then I can run different bots in different terminals, but I
 have to program the logic to see dws/trades.
 
 Well actually maybe I can still import dws/trades information.
+
+10-14
+The Instance class stores everything:
+- Exchange
+- Asset, base, pair
+- Interval
+- Candles
+- Portfolio
+
+It pings every 2 seconds where it checks for a new raw_candle and/or candle.
+On each new candle it ticks.
+
+10-22
+After messing around with dws/trades (dwts) direct imports.. It seems feasible.
+
+I can get only the dws that happened since the end of the most recent candle.
+With trades, I'll have to get the most recent 500 and eliminate irrelevant ones.
+
+Well actually, I don't have to get the 500 most recent, I can lower that number.
+Is there a case when I would want a large number of imported trades?
+Well, maybe the user was messing around with something, and in the course of 2
+hours traded 100 times.. Unlikely, but possible.
+
+If the user trades more times than the program imports, there will be a
+discrepancy between the actual assetchange and basechange vs the assetchange and
+basechange predicted by the imports.
+
+I shall calculate the predicted assetchange and basechange once I imports dwts
+and then compare it with the actual assetchange and basechange and see what I
+discover.
