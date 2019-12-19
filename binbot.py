@@ -173,9 +173,6 @@ class Instance:
             deposits = [d for d in deposits if d['asset'] in {asset, base}]
             withdrawals = [w for w in withdrawals if w['asset'] in {asset, base}]
 
-            for deposit in deposits: print("~", deposit)
-            for withdrawal in withdrawals: print("~", withdrawal)
-
             # check if pending dws have been completed then process them
             for deposit in deposits:
                 id = deposit['txId']
@@ -204,7 +201,6 @@ class Instance:
 
             # add new dws to pending if pending or process them
             for deposit in deposits:
-                print("~", deposit)
                 id = deposit['txId']
                 self.deposits[id] = deposit
                 if deposit['status'] < 1: self.deposits_pending.add(id)
@@ -214,7 +210,6 @@ class Instance:
                     if deposit['asset'] == base: diffbase_expt += amt
                     else: diffasset_expt += amt
             for withdrawal in withdrawals:
-                print("~", withdrawal)
                 id = withdrawal['id']
                 self.withdrawals[id] = withdrawal
                 if withdrawal['status'] < 0: self.withdrawals_pending.add(id)
@@ -224,19 +219,17 @@ class Instance:
                     if withdrawal['asset'] == base: diffbase_expt -= amt
                     else: diffasset_expt -= amt
 
-        print("self.deposits: ", self.deposits)
+        print("self.deposits:")
+        for id in self.deposits: print("    ~", id + ":", self.deposits[id])
         print("self.deposits_pending: ", self.deposits_pending)
-        print("self.withdrawals: ", self.withdrawals)
+        print("self.withdrawals:")
+        for id in self.withdrawals: print("    ~", id + ":", self.withdrawals[id])
         print("self.withdrawals_pending: ", self.withdrawals_pending)
         print("self.earliest_pending: ", self.earliest_pending)
 
         # Get trades
-        trades = list(reversed(client.get_my_trades(symbol = self.pair, limit = 20)))
-        for i in range(len(trades)):
-            trade = trades[i]
-            if trade['time'] < ts_last:
-                trades = trades[:i]
-                break
+        trades = reversed(client.get_my_trades(symbol = self.pair, limit = 20))
+        trades = [t for t in trades if t['time'] > ts_last]
 
         # process trades
         if len(trades) > 0:
@@ -249,9 +242,19 @@ class Instance:
                 diffasset_expt += qty
                 diffbase_expt -= qty * price
 
-        diffasset_unkn = round(diffasset - diffasset_expt, 8)
-        diffbase_unkn = round(diffbase - diffbase_expt, 8)
+        # get unknown changes
+        diffasset_expt = round(diffasset_expt, 8)
+        diffbase_expt = round(diffbase_expt, 8)
+        diffasset_unkn = diffasset - diffasset_expt
+        diffbase_unkn = diffbase - diffbase_expt
 
+        # process unknown changes
+        if diffasset_unkn > 0: print(diffasset_unkn, self.asset, "has become available.")
+        elif diffasset_unkn < 0: print(-diffasset_unkn, self.asset, "has become unavailable.")
+        if diffbase_unkn > 0: print(diffbase_unkn, self.base, "has become available.")
+        elif diffbase_unkn < 0: print(-diffbase_unkn, self.base, "has become unavailable.")
+
+        # log outputs
         print("diffasset", diffasset)
         print("diffasset_expt", diffasset_expt)
         print("diffasset_unkn", diffasset_unkn)
@@ -277,8 +280,8 @@ class Instance:
 
         # return positions if first tick
         try:
-            diff_asset = positions[self.asset] - self.positions[self.asset]
-            diff_base = positions[self.base] - self.positions[self.base]
+            diff_asset = round(positions[self.asset] - self.positions[self.asset], 8)
+            diff_base = round(positions[self.base] - self.positions[self.base], 8)
         except:
             ts = round(1000*time.time())
             self.earliest_pending = ts
