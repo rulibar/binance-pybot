@@ -112,3 +112,19 @@ basechange predicted by the imports.
 I shall calculate the predicted assetchange and basechange once I imports dwts
 and then compare it with the actual assetchange and basechange and see what I
 discover.
+
+12-9
+I think I have the dwts mostly figured out. I'm going to save a copy here with
+all my notes and commented code and timestamps just for the record. Then I'll
+clean it up and release a better version.
+
+12-19
+To do list:
+- Import talib
+- Use talib to program a simple sxs (100/20) strategy
+    - Program buys and sells methods
+    - Lots to think about here regarding rin target and how trades are executed
+- Distinguish between bot trades and other trades
+- Program the fake portfolio
+    - Fake portfolio only updated at start and when a trade is detected
+    - Calculate bot profits and asset profits
