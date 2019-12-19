@@ -1,15 +1,5 @@
 """
 Binance Trading Bot
-
-Changes:
-- In get_historical_candles_method, take the Exception and output it
-- Calculate ticks and days in ping instead of in tick
-- Total re-do of get_dwts method. Now imports dwts and compares expected change
-    to actual change
-- Stores information about deposits and withdrawals
-- Fixed a bug with missing bracket on raw candles
-- Update comments/formatting
-
 """
 
 from binance.client import Client
@@ -146,17 +136,12 @@ class Instance:
         print(self.candles[-1])
         print(self.positions)
 
-    def get_dwts(self, asset_diff, base_diff):
+    def get_dwts(self, diffasset, diffbase):
         # get end of previous candle, initialize vars
-        ts_end = self.candles[-2]['ts_end']
-        assetdiff_exp = 0.0
-        basediff_exp = 0.0
+        ts_last = self.candles[-2]['ts_end']
         ts = self.earliest_pending
-        ts0 = 1000*time.time()
-
-        ts1 = 1000*time.time()
-        print("1", ts1 - ts0)
-        ts0 = ts1
+        diffasset_expt = 0.0
+        diffbase_expt = 0.0
 
         if self.ticks == 1: # first tick
             # get all pending dws from previous week
@@ -180,10 +165,6 @@ class Instance:
                 if withdrawal['applyTime'] < self.earliest_pending:
                     self.earliest_pending = withdrawal['applyTime']
 
-            print("self.deposits: ", self.deposits)
-            print("self.withdrawals: ", self.withdrawals)
-            print("self.earliest_pending: ", self.earliest_pending)
-
         else: # not first tick
             # get all dws starting from 1 s before the earliest pending dw
             deposits = client.get_deposit_history(startTime = ts - 1000)['depositList']
@@ -202,8 +183,8 @@ class Instance:
                     if deposit['status'] > 0:
                         print("Deposit processed")
                         amt = deposit['amount']
-                        if deposit['asset'] == base: basediff_exp += amt
-                        else: assetdiff_exp += amt
+                        if deposit['asset'] == base: diffbase_expt += amt
+                        else: diffasset_expt += amt
                         self.deposits[id] = deposit
                         self.deposits_pending.remove(id)
             for withdrawal in withdrawals:
@@ -212,14 +193,14 @@ class Instance:
                     if withdrawal['status'] > 3:
                         print("Withdrawal processed")
                         amt = withdrawal['amount'] + withdrawal['transactionFee']
-                        if withdrawal['asset'] == base: basediff_exp -= amt
-                        else: assetdiff_exp -= amt
+                        if withdrawal['asset'] == base: diffbase_expt -= amt
+                        else: diffasset_expt -= amt
                         self.withdrawals[id] = withdrawal
                         self.withdrawals_pending.remove(id)
 
             # check if any dws have been added in the last candle
-            deposits = [d for d in deposits if d['insertTime'] > ts_end]
-            withdrawals = [w for w in withdrawals if w['applyTime'] > ts_end]
+            deposits = [d for d in deposits if d['insertTime'] > ts_last]
+            withdrawals = [w for w in withdrawals if w['applyTime'] > ts_last]
 
             # add new dws to pending if pending or process them
             for deposit in deposits:
@@ -230,8 +211,8 @@ class Instance:
                 else:
                     print("Deposit processed")
                     amt = deposit['amount']
-                    if deposit['asset'] == base: basediff_exp += amt
-                    else: assetdiff_exp += amt
+                    if deposit['asset'] == base: diffbase_expt += amt
+                    else: diffasset_expt += amt
             for withdrawal in withdrawals:
                 print("~", withdrawal)
                 id = withdrawal['id']
@@ -240,28 +221,24 @@ class Instance:
                 else:
                     print("Withdrawal processed")
                     amt = withdrawal['amount'] + withdrawal['transactionFee']
-                    if withdrawal['asset'] == base: basediff_exp -= amt
-                    else: assetdiff_exp -= amt
+                    if withdrawal['asset'] == base: diffbase_expt -= amt
+                    else: diffasset_expt -= amt
 
-            print("self.deposits: ", self.deposits)
-            print("self.withdrawals: ", self.withdrawals)
-            print("self.earliest_pending: ", self.earliest_pending)
+        print("self.deposits: ", self.deposits)
+        print("self.deposits_pending: ", self.deposits_pending)
+        print("self.withdrawals: ", self.withdrawals)
+        print("self.withdrawals_pending: ", self.withdrawals_pending)
+        print("self.earliest_pending: ", self.earliest_pending)
 
         # Get trades
-        ts1 = 1000*time.time()
-        print("4", ts1 - ts0)
-        ts0 = ts1
         trades = list(reversed(client.get_my_trades(symbol = self.pair, limit = 20)))
         for i in range(len(trades)):
             trade = trades[i]
-            if trade['time'] < ts_end:
+            if trade['time'] < ts_last:
                 trades = trades[:i]
                 break
 
         # process trades
-        ts1 = 1000*time.time()
-        print("5", ts1 - ts0)
-        ts0 = ts1
         if len(trades) > 0:
             print("{} new trade(s) found.".format(len(trades)))
             for trade in trades:
@@ -269,18 +246,18 @@ class Instance:
                 qty = float(trade['qty'])
                 price = float(trade['price'])
                 if not trade['isBuyer']: qty *= -1
-                assetdiff_exp += qty
-                basediff_exp -= qty * price
+                diffasset_expt += qty
+                diffbase_expt -= qty * price
 
-        assetdiff_unkn = round(asset_diff - assetdiff_exp, 8)
-        basediff_unkn = round(base_diff - basediff_exp, 8)
+        diffasset_unkn = round(diffasset - diffasset_expt, 8)
+        diffbase_unkn = round(diffbase - diffbase_expt, 8)
 
-        print("assetdiff_exp", assetdiff_exp)
-        print("asset_diff", asset_diff)
-        print("basediff_exp", basediff_exp)
-        print("base_diff", base_diff)
-        print("assetdiff_unkn", assetdiff_unkn)
-        print("basediff_unkn", basediff_unkn)
+        print("diffasset", diffasset)
+        print("diffasset_expt", diffasset_expt)
+        print("diffasset_unkn", diffasset_unkn)
+        print("diffbase", diffbase)
+        print("diffbase_expt", diffbase_expt)
+        print("diffbase_unkn", diffbase_unkn)
 
         return
 
@@ -300,15 +277,15 @@ class Instance:
 
         # return positions if first tick
         try:
-            asset_diff = positions[self.asset] - self.positions[self.asset]
-            base_diff = positions[self.base] - self.positions[self.base]
+            diff_asset = positions[self.asset] - self.positions[self.asset]
+            diff_base = positions[self.base] - self.positions[self.base]
         except:
             ts = round(1000*time.time())
             self.earliest_pending = ts
             return positions
 
         # check for dwts before returning positions
-        self.get_dwts(asset_diff, base_diff)
+        self.get_dwts(diff_asset, diff_base)
         return positions
 
     def ping(self):
