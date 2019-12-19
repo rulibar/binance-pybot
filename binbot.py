@@ -1,99 +1,6 @@
 """
 Binance Trading Bot
 
-/Error 1:
-When the bot starts, the last candle was around 27 minutes ago. Next in 3 mins.
-When the bot start, portfolio is calculated.
-If a trade occurred before portfolio was calculated, it will be seen by the bot,
-but the corresponding change in portfolio won't be seen.
-A: I should probably find a way to not import trades on the first candle unless
-it happened since I imported my portfolio.
-
-Fix:
-/- Put get_positions inside the new candle algorithm in ping
-    So portfolios aren't imported until right before dwts happens.
-    And when portfolios are saved the timestamp is saved anyways.
-
-/Error 2:
-When depositing funds the bot will see the order before the funds are deposited
-in the account while it's waiting for confirmations. This causes unkn balance
-changes because the detection and the reception of the funds occur at different
-times.
-This would be less of an issue on a long timeframe but still could occur.
-
-Fix:
-/- Save the timestamp of the last deposit (or the start time if no deposits yet)
-/- Import deposits since last deposit, filter out incomplete and irrelevant ones
-/- If there is a relevant completed deposit then process it
-
-/Error 3:
-When withdrawing funds the the bot doesn't include the fee in the amount.
-
-Fix:
-/- Don't just take the amount. Take 'amount' + 'transactionFee'
-/- Binance reports the funds withdrawn immediately so Error 2 doesn't happen for
-withdrawals.
-
-/Error 4:
-Now when you deposit funds the bot will not see the deposit if the deposit was
-pending at the time the bot was started
-
-Fix:
-/- Instead of setting ts_lastd to ts
-/- get all dws in the past week
-/- filter out all that are completed, then take the ts of the earliest,
-subtract 1s, and set that as your ts_lastd
-    - This way, when the bot imports ds it will go back far enough to include
-    pending ds
-
-/Error 5:
-When a dw is processed, it will continue to be processed on future candles.
-This is because self.lastd is not updated. If there are no pending orders, then
-earliest gets set to self.lastd and previously processed orders are processed
-again.
-
-Fix:
-/- Fixed by fixing Error 6
-
-/Error 6:
-If two deposits are initiated at around the same time. The deposit that was
-initiated second might actually be processed first. In this case, the second
-deposit would be processed again and again until the unprocessed deposit is
-also processed.
-
-- This method clearly isn't working. I need to rethink this.
-- It appears I need to track all dws processed
-- If a dw needs to be processed, I can check if it's already been processed by
-    checking the record
-- On each candle, I can get earliest from the earliest pending order
-- If no pending orders, then all orders are processed, so you know the only
-    relevant orders would have been processed in the last candle
-
-- I simply don't know what time the order status went from 0 to 1
-- Maybe the best thing to do is track all pending orders as well, so on each
-    candle I can check if the pending orders have been filled
-
-/- On start, get all dws from past week, remove completed dws
-    (since portfolio was just barely calculated we only care about pending)
-/- Create dicts to track dws, key is orderId, value is dw
-/- Each candle I am interested in
-    - Are there any new pending orders?
-    - Have any of the previous pending orders been completed?
-/- So I store a set of pending orders
-/- Each candle I import trades from earliest pending
-/- Check set of pending to see if any pending have been processed
-    /- If so, output message and updated expected chng
-    /- Update dict entry
-    /- Remove from pending set
-/- Remove all dws that didn't happen in the last candle
-/- Remaining are new orders
-/    - Add dict entry
-/    - Add to pending set if not completed
-/    - Otherwise, process
-
-/- So I need to save self.deposits, self.deposits_pending, self.withdrawals,
-self.withdrawals_pending, self.earliest_pending
-
 Changes:
 - In get_historical_candles_method, take the Exception and output it
 - Calculate ticks and days in ping instead of in tick
@@ -131,9 +38,6 @@ class Instance:
         self.candles_raw = self.shrink_list(self.candles_raw, 2*self.interval)
         self.candles_raw_unused = self._get_raw_unused()
         print("Historical candles loaded.")
-
-        #self.ts_lastd = 0
-        #self.ts_lastw = 0
 
         self.deposits = dict()
         self.withdrawals = dict()
@@ -243,72 +147,10 @@ class Instance:
         print(self.positions)
 
     def get_dwts(self, asset_diff, base_diff):
-        """#
-        # get all pending dws from the last week, find the earliest
-        ts_end = self.candles[-2]['ts_end']
-        ts0 = 1000*time.time()
-        deposits = client.get_deposit_history(startTime = ts - 1000*60*60*24*7)['depositList']
-        withdrawals = client.get_withdraw_history(startTime = ts - 1000*60*60*24*7)['withdrawList']
-        deposits = [d for d in deposits if d['asset'] in {asset, base}]
-        withdrawals = [w for w in withdrawals if w['asset'] in {asset, base}]
-
-        deposits_pending = [d for d in deposits if d['status'] < 1]
-        withdrawals_pending = [w for w in withdrawals if w['status'] < 4]
-
-        earliest = ts
-        for dw in deposits_pending + withdrawals_pending:
-            if dw['insertTime'] < earliest: earliest = dw['insertTime'] - 1000
-        ts1 = 1000*time.time()
-        print("2", ts1 - ts0)
-        ts0 = ts1
-        # get all dws as far back as necessary to get all pending dws
-        #deposits = client.get_deposit_history(startTime = earliest)['depositList']
-        #withdrawals = client.get_withdraw_history(startTime = earliest)['withdrawList']
-        #deposits = [d for d in deposits if d['asset'] in {asset, base}]
-        #withdrawals = [w for w in withdrawals if w['asset'] in {asset, base}]
-
-        for deposit in deposits: print("~", deposit)
-        for withdrawal in withdrawals: print("~", withdrawal)
-
-        deposits = [d for d in deposits if d['insertTime'] > earliest]
-        withdrawals = [w for w in withdrawals if w['applyTime'] > earliest]
-
-        for deposit in deposits: print("~", deposit)
-        for withdrawal in withdrawals: print("~", withdrawal)
-
-        assetdiff_exp = 0.0
-        basediff_exp = 0.0
-
-        # process dws
-        ts1 = 1000*time.time()
-        print("3", ts1 - ts0)
-        ts0 = ts1
-        if len(deposits) > 0:
-            print("{} new deposit(s) found.".format(len(deposits)))
-            for deposit in deposits:
-                print("~", deposit)
-                if deposit['status'] < 1: continue
-                amt = deposit['amount']
-                if deposit['asset'] == base: basediff_exp += amt
-                else: assetdiff_exp += amt
-        if len(withdrawals) > 0:
-            print("{} new withdrawal(s) found.".format(len(withdrawals)))
-            for withdrawal in withdrawals:
-                print("~", withdrawal)
-                if withdrawal['status'] < 4: continue
-                #self.ts_lastw = withdrawal['']
-                amt = withdrawal['amount'] + withdrawal['transactionFee']
-                if withdrawal['asset'] == base: basediff_exp -= amt
-                else: assetdiff_exp -= amt
-        """
-
-        print(self.ticks, self.days)
-
         # get end of previous candle, initialize vars
         ts_end = self.candles[-2]['ts_end']
         assetdiff_exp = 0.0
         basediff_exp = 0.0
-        #ts = self.ts_lastd
         ts = self.earliest_pending
         ts0 = 1000*time.time()
 
@@ -341,6 +183,7 @@ class Instance:
             print("self.deposits: ", self.deposits)
             print("self.withdrawals: ", self.withdrawals)
             print("self.earliest_pending: ", self.earliest_pending)
+
         else: # not first tick
             # get all dws starting from 1 s before the earliest pending dw
             deposits = client.get_deposit_history(startTime = ts - 1000)['depositList']
@@ -457,34 +300,10 @@ class Instance:
 
         # return positions if first tick
         try:
-            print("positions", positions)
-            print("self.positions", self.positions)
             asset_diff = positions[self.asset] - self.positions[self.asset]
             base_diff = positions[self.base] - self.positions[self.base]
         except:
-            #asset_diff = 0
-            #base_diff = 0
-            """ts = round(1000*time.time())
-
-            deposits = client.get_deposit_history(startTime = ts - 1000*60*60*24)['depositList']
-            #withdrawals = client.get_withdraw_history(startTime = ts - 1000*60*60*24)['withdrawList']
-
-            deposits = [d for d in deposits if d['status'] == 0]
-            if len(deposits) > 0:
-                earliest = ts
-                print("Pending deposits:")
-                for deposit in deposits:
-                    print("~", deposit)
-                    if deposit['insertTime'] < earliest: earliest = deposit['insertTime']
-
-            #for withdrawal in withdrawals:
-            #    print("~", withdrawal)
-
-            self.ts_lastd = earliest - 1000
-            self.ts_lastw = ts"""
             ts = round(1000*time.time())
-            #self.ts_lastd = ts
-            #self.ts_lastw = ts
             self.earliest_pending = ts
             return positions
 
