@@ -5,6 +5,8 @@ Binance Trading Bot
 from binance.client import Client
 from datetime import datetime
 import time
+import numpy
+import talib
 
 api_key = ""
 api_secret = ""
@@ -42,8 +44,8 @@ class Instance:
         Get enough 1m data to compile 600 historical candles
         Remove interval_mins - 2 1m data so that the next candle will come in 1-2 mins
         """
-        data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(60*self.interval))
-        #data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(600*self.interval))
+        #data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(60*self.interval))
+        data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(600*self.interval))
         for i in range(self.interval - 1): data.pop()
         for i in range(len(data)): data[i] = self.get_candle(data[i])
         return data
@@ -128,13 +130,34 @@ class Instance:
         }
         return candle
 
+    def init_storage(self):
+        print("~~ Init Storage ~~")
+
+        price = self.candles[-1]['close']
+        self.signal = {
+            "rinTarget": 0,
+            "rinTargetLast": 0,
+            "position": "none",
+            "status": 0,
+            "apc": price,
+            "target": price,
+            "stop": price
+        }
+
     def init(self):
         print("~~ Init ~~")
 
     def tick(self):
         print("~~ Tick ~~")
-        print(self.candles[-1])
-        print(self.positions)
+        print("Most recent candle:", self.candles[-1])
+        print("Positions:", self.positions)
+
+        close_data = numpy.array([c['close'] for c in self.candles])
+        mas = round(talib.SMA(close_data, timeperiod = 20)[-1], 8)
+        mal = round(talib.SMA(close_data, timeperiod = 100)[-1], 8)
+
+        print("20 SMA:", mas)
+        print("100 SMA:", mal)
 
     def get_dwts(self, diffasset, diffbase):
         # get end of previous candle, initialize vars
@@ -333,7 +356,12 @@ class Instance:
             self.positions = self.get_positions()
 
             # tick
+            if self.ticks == 1:
+                self.init_storage()
+                #self.get_seeds()
+                #self.updateF()
             self.tick()
+            #self.bso()
 
 ins = Instance(asset, base, interval_mins)
 ins.init()
