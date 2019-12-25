@@ -126,5 +126,60 @@ To do list:
     - Lots to think about here regarding rin target and how trades are executed
 - Distinguish between bot trades and other trades
 - Program the fake portfolio
+    - Fake portfolio does not include deposits or withdrawals
     - Fake portfolio only updated at start and when a trade is detected
     - Calculate bot profits and asset profits
+
+12-25
+How to install python-binance and talib on Linux Mint Mate 19.2
+- Update system
+$ sudo apt install python3-pip python3-setuptools python3-dev
+$ sudo pip3 install python-binance
+- See README on TA-Lib python wrapper GitHub
+- You need to install TA-Lib on your computer before the TA-Lib python wrapper
+    will work.
+- Locate the part on the README where it gives you a file to download and
+    instructions to extract and install TA-Lib on Linux. Install TA-Lib
+$ sudo apt install python3-dev
+$ sudo pip3 install TA-Lib
+
+***
+
+I'm going to store a dict called self.signal that contains information about
+the current trading status.
+
+It will be structured like this:
+self.signal = {
+    'rinTarget': float
+    'rinTargetLast': float
+    'position': str
+    'status': int
+    'apc': float
+    'target': float
+    'stop': float
+}
+
+- rinTarget stands for ratio-invested-target. It is what ratio of your funds
+should be invested, between 0 and 1.
+* Everything is optional besides rinTarget *
+- rinTarget is chosen in self.tick and drives the bot's trading behavior
+- If rinTarget is not chosen the bot will not trade
+- rinTargetLast stores the previous rinTarget and should be automatically updated
+- position stores the current investment position in case your strategy depends
+on it, should be automatically updated
+- status is 0 by default, user can opt to change it as a part of their strategy
+- apc is the average price that you entered the current 'position' as defined
+above, should be automatically updated
+- target/stop is optional, if the user's strategy has a target and stop then they
+can store those values here
+
+This way, the user's job is to set rinTarget between 0 and 1 using TA-Lib
+indicators or other python code. rinTargetLast, position, apc should be
+automatically set. status, target, and stop are optional if the user needs them.
+
+Then, once the user strategy sets rinTarget in self.tick, self.bso is called
+and the buys or sells are executed to meet rinTarget.
+
+Also added a spot for self.get_seeds and self.updateF which will eventually be
+used to set randomization seeds and init/update the fake portfolios respectively.
+The fake portfolios will be used to track information about performance.
