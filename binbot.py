@@ -38,13 +38,10 @@ class Instance:
         self.earliest_pending = 0
 
         self.positions = self.get_positions()
+        self.params = self.get_params()
 
     def _candles_raw_init(self) -> list:
-        """
-        Get enough 1m data to compile 600 historical candles
-        Remove interval_mins - 2 1m data so that the next candle will come in 1-2 mins
-        """
-        #data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(60*self.interval))
+        """ Get enough 1m data to compile 600 historical candles """
         data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(600*self.interval))
         for i in range(self.interval - 1): data.pop()
         for i in range(len(data)): data[i] = self.get_candle(data[i])
@@ -148,7 +145,8 @@ class Instance:
         print("~~ Init ~~")
 
     def tick(self):
-        print("~~ Tick ~~")
+        s = self.signal
+
         print("Most recent candle:", self.candles[-1])
         print("Positions:", self.positions)
 
@@ -158,6 +156,26 @@ class Instance:
 
         print("20 SMA:", mas)
         print("100 SMA:", mal)
+
+        if s['position'] == "long":
+            s['rinTarget'] = 1
+            if mas < mal: s['rinTarget'] = 0
+        else:
+            s['rinTarget'] = 0
+            if mas > mal: s['rinTarget'] = 1
+
+        print("rinTarget:", s['rinTarget'])
+
+    def bso(self):
+        s = self.signal
+        p = self.positions
+
+        print("~~ bso ~~")
+
+        rbuy = s['rinTarget'] - s['rinTargetLast']
+        order_size = 0
+        print("rbuy", rbuy, "p[self.asset]", p[self.asset])
+        print("product", rbuy * p[self.asset])
 
     def get_dwts(self, diffasset, diffbase):
         # get end of previous candle, initialize vars
@@ -314,6 +332,50 @@ class Instance:
         self.get_dwts(diff_asset, diff_base)
         return positions
 
+    def get_params(self):
+        """
+        Compare recently imported params with previous params
+        Report any changes
+        /- If keys were added or removed
+        /- If values were changed
+        /Update self.params
+
+        /Also handle case of initialization in __init__
+        """
+        params = dict()
+        with open("config.txt") as cfg:
+            par = [l.split()[0] for l in cfg.read().split("\n")[2:-1]]
+            for p in par:
+                p = p.split("=")
+                if len(p) != 2: continue
+                params[str(p[0])] = str(p[1])
+        try:
+            keys_old = {key for key in self.params}
+            keys_new = {key for key in params}
+        except:
+            return params
+
+        keys_added = {key for key in keys_new if key not in keys_old}
+        keys_removed = {key for key in keys_old if key not in keys_new}
+
+        if len(keys_added) > 0:
+            print(len(keys_added), "parameter(s) added.")
+            for key in keys_added: print("~", key, params[key])
+        if len(keys_removed) > 0:
+            print(len(keys_removed), "parameter(s) removed.")
+            for key in keys_removed: print("~", key)
+
+        keys_remaining = {key for key in keys_old if key in keys_new}
+        keys_changed = set()
+
+        for key in keys_remaining:
+            if params[key] != self.params[key]: keys_changed.add(key)
+        if len(keys_changed) > 0:
+            print(len(keys_changed), "parameter(s) changed.")
+            for key in keys_changed: print("~", key, self.params[key], params[key])
+
+        return params
+
     def ping(self):
         """ Check for and handle a new candle """
         # New raw candle?
@@ -327,6 +389,7 @@ class Instance:
         # New candle?
         if self.candles_raw_unused == self.interval:
             print(100*"=")
+            self.params = self.get_params()
             self.ticks += 1
             self.days = (self.ticks - 1) * self.interval / (60 * 24)
 
@@ -361,7 +424,7 @@ class Instance:
                 #self.get_seeds()
                 #self.updateF()
             self.tick()
-            #self.bso()
+            self.bso()
 
 ins = Instance(asset, base, interval_mins)
 ins.init()
