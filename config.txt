@@ -1,0 +1,3 @@
+# Does not read the first two lines or the last line
+# Ignores everything after the first space on each line
+funds=0 # The maximum amount of capital the bot should invest. 0 means no maximum
