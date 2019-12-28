@@ -183,3 +183,70 @@ and the buys or sells are executed to meet rinTarget.
 Also added a spot for self.get_seeds and self.updateF which will eventually be
 used to set randomization seeds and init/update the fake portfolios respectively.
 The fake portfolios will be used to track information about performance.
+
+12-27
+I want to have certain parameters that the user can change while the bot is
+running.
+
+In particular, I want to set a maximum amount of funds for the bot to invest.
+So when the bot opens a new position, it will always invest the same amount.
+This allows you to run multiple bots on one account.
+
+This is difficult to implement though because this bot is run in a terminal
+and in the future planned to be ran in daemon mode, outputting logs to a text
+file.
+
+I think the best way to implement changeable parameters is to store them in a
+text file and then open the file every time a new candle is generated. The user
+can check the log in the log file, and if they want to change parameters they
+can open the config file and change them there.
+
+I'm going to start with some built-in parameters like maximum investment size
+then worry about potentially allowing optional parameters later.
+
+***
+
+New tick?
+- Update vars (ticks, days)
+- Get the new candle
+- Get the portfolio (including dwts)
+- Do tick and bso
+
+Where do I insert importing params?
+- Params definitely affect tick and bso
+- Params could affect getting the portfolio (outputting dwts)
+- I could always import params in the beginning and then just not use them until
+I need them (sounds good)
+
+***
+
+Params consist of
+- Key
+- Value
+- Value range (optional)
+- Description (optional)
+
+I'm thinking I can store the params in the text file like this:
+param1=1
+param2=True
+param3="yes"
+
+will have to check value ranges for built-in params in the code. If user adds
+custom params they will have to check their own ranges
+
+I create a params object. Import the text file. Save the data as a dict.
+Then each tick I can compare the new params dict with the previous params dict
+and report any changes.
+
+I can refer to params values like params['param1']
+
+Config file will be called config.txt
+
+***
+
+I've successfully made it so that params are stored in config.txt, they are
+imported on init and on each tick, and any changes in params will be processed
+and outputted to log.
+
+This allows me to use the funds parameter which I need to program the buys and
+sells.
