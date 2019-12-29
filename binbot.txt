@@ -250,3 +250,24 @@ and outputted to log.
 
 This allows me to use the funds parameter which I need to program the buys and
 sells.
+
+12-28
+I still need to check if the parameter values are in the right range.
+- This requires modifications to the actual code if params are added or removed
+which means adding or removing params may require a restart.
+- However, if I don't check ranges then I don't need to restart. So if a user
+adds a new param to their strategy and they don't put range checks in the code
+and restart their bot, they just have to be careful what values they enter
+since there's no range checking
+- Maybe only the built-in params will have range checking in general
+- Currently the built-in params that I have in mind are
+    - Maximum investment amount
+    - Log outputs per day
+    - Log deposits and withdrawals
+
+I need to apply the range checks early, before self.params is updated.
+- I'll put them right after I import the config file.
+- This method assumes that 'funds' will be a param for example, or else the bot
+will break.
+- If you accidentally make a typo and save the config file you can break the
+bot and lose your stats. (because of range checking)
