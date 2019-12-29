@@ -15,13 +15,29 @@ client = Client(api_key, api_secret)
 asset = "BTC"; base = "USDT"
 interval_mins = 30 # [3, 240]
 
+class Portfolio:
+    def __init__(self, candle, positions, funds):
+        self.ts = candle['ts_end']
+        self.asset = positions['asset'][1]
+        self.base = positions['base'][1]
+        self.price = candle['close']
+        self.position_value = self.price * self.asset
+        self.size = self.base + self.position_value
+        self.funds = funds
+        if funds > self.size or funds == 0: self.funds = float(self.size)
+        self.sizeT = float(self.funds)
+        self.rin = self.price * self.asset / self.size
+        self.rinT = self.price * self.asset / self.sizeT
+
 class Instance:
     def __init__(self, asset, base, interval_mins):
+        self.ticks = 0; self.days = 0
+        self.params = self.get_params()
+
         self.exchange = "binance"
         self.asset = str(asset); self.base = str(base)
         self.pair = self.asset + self.base
         self.interval = int(interval_mins)
-        self.ticks = 0; self.days = 0
         print("New trader instance started on {} {}m.".format(self.pair, self.interval))
 
         print("Getting historical candles...")
@@ -38,7 +54,6 @@ class Instance:
         self.earliest_pending = 0
 
         self.positions = self.get_positions()
-        self.params = self.get_params()
 
     def _candles_raw_init(self) -> list:
         """ Get enough 1m data to compile 600 historical candles """
@@ -127,24 +142,29 @@ class Instance:
         }
         return candle
 
-    def init_storage(self):
+    def init_storage(self, p):
         print("~~ Init Storage ~~")
 
-        price = self.candles[-1]['close']
+        price = float(self.candles[-1]['close'])
         self.signal = {
-            "rinTarget": 0,
-            "rinTargetLast": 0,
+            "rinTarget": p.rinT,
+            "rinTargetLast": p.rinT,
             "position": "none",
             "status": 0,
             "apc": price,
             "target": price,
             "stop": price
         }
+        self.last_order = {
+            "type": "none",
+            "amt": 0,
+            "pt": price
+        }
 
     def init(self):
         print("~~ Init ~~")
 
-    def tick(self):
+    def tick(self, p):
         s = self.signal
 
         print("Most recent candle:", self.candles[-1])
@@ -166,16 +186,34 @@ class Instance:
 
         print("rinTarget:", s['rinTarget'])
 
-    def bso(self):
+    def bso(self, p):
         s = self.signal
-        p = self.positions
 
         print("~~ bso ~~")
 
         rbuy = s['rinTarget'] - s['rinTargetLast']
         order_size = 0
-        print("rbuy", rbuy, "p[self.asset]", p[self.asset])
-        print("product", rbuy * p[self.asset])
+        if rbuy * p.asset >= 0:
+            order_size = abs(rbuy * p.funds)
+            if order_size > p.base: order_size = p.base
+        if rbuy * p.asset < 0:
+            rbuy_asset = rbuy / s['rinTargetLast']
+            order_size = abs(rbuy_asset * p.asset * p.price)
+        print("order_size", order_size)
+
+        if order_size > 0:
+            if rbuy > 0: pt = (1 + 0.0015) * p.price
+            else: pt = (1 - 0.0015) * p.price
+            pt = round(pt, 8)
+            if rbuy > 0: amt = order_size / pt
+            else: amt = order_size / p.price
+            amt = round(0.995*amt*10**8 - 2)/10**8
+            if rbuy > 0: print("buy amt", amt, "pt", pt, "prod", amt * pt)
+            if rbuy < 0: print("sell amt", amt, "pt", pt, "prod", amt * pt)
+        if rbuy == 0: order_size = 0
+        if order_size == 0:
+            if self.ticks == 1: print("Waiting for a signal to trade...")
+            self.last_order = {"type": "none", "amt": 0, "pt": p.price}
 
     def get_dwts(self, diffasset, diffbase):
         # get end of previous candle, initialize vars
@@ -308,7 +346,7 @@ class Instance:
     def get_positions(self) -> dict:
         """ Get balances and check dwts """
         # get balances
-        positions = {self.asset: 0, self.base: 0}
+        positions = {"asset": [self.asset, 0], "base": [self.base, 0]}
         data = client.get_account()
         data = data["balances"]
         for i in range(len(data)):
@@ -317,12 +355,13 @@ class Instance:
             free = float(data[i]["free"])
             locked = float(data[i]["locked"])
             total = free + locked
-            positions[asset] = total
+            if asset == self.asset: positions['asset'][1] = total
+            if asset == self.base: positions['base'][1] = total
 
         # return positions if first tick
         try:
-            diff_asset = round(positions[self.asset] - self.positions[self.asset], 8)
-            diff_base = round(positions[self.base] - self.positions[self.base], 8)
+            diff_asset = round(positions['asset'][1] - self.positions['asset'][1], 8)
+            diff_base = round(positions['base'][1] - self.positions['base'][1], 8)
         except:
             ts = round(1000*time.time())
             self.earliest_pending = ts
@@ -338,10 +377,12 @@ class Instance:
         Report any changes
         /- If keys were added or removed
         /- If values were changed
+        /- Check ranges on changed values
         /Update self.params
 
         /Also handle case of initialization in __init__
         """
+        # import config.txt
         params = dict()
         with open("config.txt") as cfg:
             par = [l.split()[0] for l in cfg.read().split("\n")[2:-1]]
@@ -349,12 +390,21 @@ class Instance:
                 p = p.split("=")
                 if len(p) != 2: continue
                 params[str(p[0])] = str(p[1])
+
+        # check values
+        funds = float(params['funds'])
+        if funds < 0:
+            print("Warning! Maximum amount to invest should be greater than zero.")
+            params['funds'] = "0"
+
+        # handle init case
         try:
             keys_old = {key for key in self.params}
             keys_new = {key for key in params}
         except:
             return params
 
+        # check for added, removed, and changed params
         keys_added = {key for key in keys_new if key not in keys_old}
         keys_removed = {key for key in keys_old if key not in keys_new}
 
@@ -417,14 +467,15 @@ class Instance:
 
             # get portfolio
             self.positions = self.get_positions()
+            p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
 
             # tick
             if self.ticks == 1:
-                self.init_storage()
+                self.init_storage(p)
                 #self.get_seeds()
                 #self.updateF()
-            self.tick()
-            self.bso()
+            self.tick(p)
+            self.bso(p)
 
 ins = Instance(asset, base, interval_mins)
 ins.init()
