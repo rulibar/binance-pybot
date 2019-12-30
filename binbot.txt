@@ -281,7 +281,7 @@ pain because binance
 This will take some more testing before I see if its working properly.
 
 To do list:
-- Make sure the bot cancels all orders at the start of a new tick
+/- Make sure the bot cancels all orders at the start of a new tick
     (mimicking cryptotrader functionality to make my transition faster and easier)
     - The idea (with this bot) is that you wait for the price then you buy as
     opposed to placing the buy and then waiting for the price to come to you.
@@ -293,3 +293,12 @@ To do list:
 - Add logging so that the log output saves to a text file and the bot can
     be run in daemon mode
 - Run a lot of test runs and find problems/bugs and optimize the code
+
+12-30
+Regarding logging...
+- Well when I'm running in daemon I don't plan to be able to see the terminal log
+so any relevant information should also be included in the log file
+- Plus I have various levels of logging to filter by in my log file so I can
+include a lot of information
+- So I'm going to start by duplicating my terminal log information into the log
+file
