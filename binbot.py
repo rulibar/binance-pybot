@@ -54,6 +54,9 @@ class Instance:
         self.earliest_pending = 0
 
         self.positions = self.get_positions()
+        p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
+        self.last_order = {"type": "none", "amt": 0, "pt": self.candles[-1]['close']}
+        self.signal = {"rinTarget": p.rinT, "rinTargetLast": p.rinT, "position": "none", "status": 0, "apc": p.price, "target": p.price, "stop": p.price}
 
     def _candles_raw_init(self) -> list:
         """ Get enough 1m data to compile 600 historical candles """
@@ -145,22 +148,6 @@ class Instance:
     def init_storage(self, p):
         print("~~ Init Storage ~~")
 
-        price = float(self.candles[-1]['close'])
-        self.signal = {
-            "rinTarget": p.rinT,
-            "rinTargetLast": p.rinT,
-            "position": "none",
-            "status": 0,
-            "apc": price,
-            "target": price,
-            "stop": price
-        }
-        self.last_order = {
-            "type": "none",
-            "amt": 0,
-            "pt": price
-        }
-
     def init(self):
         print("~~ Init ~~")
 
@@ -177,12 +164,8 @@ class Instance:
         print("20 SMA:", mas)
         print("100 SMA:", mal)
 
-        if s['position'] == "long":
-            s['rinTarget'] = 1
-            if mas < mal: s['rinTarget'] = 0
-        else:
-            s['rinTarget'] = 0
-            if mas > mal: s['rinTarget'] = 1
+        s['rinTarget'] = 1
+        if mas > mal: s['rinTarget'] = 0
 
         print("rinTarget:", s['rinTarget'])
 
@@ -199,24 +182,42 @@ class Instance:
         if rbuy * p.asset < 0:
             rbuy_asset = rbuy / s['rinTargetLast']
             order_size = abs(rbuy_asset * p.asset * p.price)
-        print("order_size", order_size)
+        if order_size < self.min_order: order_size = 0
 
         if order_size > 0:
             if rbuy > 0: pt = (1 + 0.0015) * p.price
             else: pt = (1 - 0.0015) * p.price
-            pt = round(pt, 8)
+            pt = round(pt, self.pt_dec)
             if rbuy > 0: amt = order_size / pt
             else: amt = order_size / p.price
-            amt = round(0.995*amt*10**8 - 2)/10**8
-            if rbuy > 0: print("buy amt", amt, "pt", pt, "prod", amt * pt)
-            if rbuy < 0: print("sell amt", amt, "pt", pt, "prod", amt * pt)
+            amt = round(0.995*amt*10**self.amt_dec - 2)/10**self.amt_dec
+            if rbuy > 0: self.limit_buy(amt, pt)
+            if rbuy < 0: self.limit_sell(amt, pt)
         if rbuy == 0: order_size = 0
         if order_size == 0:
             if self.ticks == 1: print("Waiting for a signal to trade...")
             self.last_order = {"type": "none", "amt": 0, "pt": p.price}
 
+    def limit_buy(self, amt, pt):
+        try:
+            print("buy amt", amt, "pt", pt, "prod", amt * pt)
+            self.last_order = {"type": "buy", "amt": amt, "pt": pt}
+            client.order_limit_buy(symbol = self.pair, quantity = amt, price = pt)
+        except Exception as e:
+            print("Error buying. '{}'".format(e))
+
+    def limit_sell(self, amt, pt):
+        try:
+            print("sell amt", amt, "pt", pt, "prod", amt * pt)
+            self.last_order = {"type": "sell", "amt": amt, "pt": pt}
+            client.order_limit_sell(symbol = self.pair, quantity = amt, price = pt)
+        except Exception as e:
+            print("Error buying. '{}'".format(e))
+
     def get_dwts(self, diffasset, diffbase):
         # get end of previous candle, initialize vars
+        l = self.last_order
+        s = self.signal
         ts_last = self.candles[-2]['ts_end']
         ts = self.earliest_pending
         diffasset_expt = 0.0
@@ -311,6 +312,8 @@ class Instance:
         trades = [t for t in trades if t['time'] > ts_last]
 
         # process trades
+        diffasset_trad = 0
+        diffbase_trad = 0
         if len(trades) > 0:
             print("{} new trade(s) found.".format(len(trades)))
             for trade in trades:
@@ -318,8 +321,33 @@ class Instance:
                 qty = float(trade['qty'])
                 price = float(trade['price'])
                 if not trade['isBuyer']: qty *= -1
+                diffasset_trad += qty
+                diffbase_trad -= qty * price
                 diffasset_expt += qty
                 diffbase_expt -= qty * price
+
+        rbuy = s['rinTarget'] - s['rinTargetLast']
+        rTrade = 0
+        if l['amt'] != 0: rTrade = abs(diffasset_trad / l['amt'])
+        if diffasset_trad > 0:
+            print("Buy detected")
+            print("diffasset_trad", diffasset_trad, "l['amt']", l['amt'])
+            print("rTrade", rTrade)
+            if l['type'] != "buy":
+                print("Manual buy detected.")
+                rTrade = 0
+            elif abs(rTrade - 1) > 0.1:
+                print("Buy order partially filled.")
+        elif diffasset_trad < 0:
+            print("Sell detected")
+            print("diffasset_trad", diffasset_trad, "l['amt']", l['amt'])
+            print("rTrade", rTrade)
+            if l['type'] != "sell":
+                print("Manual sell detected")
+                rTrade = 0
+            elif abs(rTrade - 1) > 0.1:
+                print("Sell order partially filled.")
+        s['rinTargetLast'] += rTrade * rbuy
 
         # get unknown changes
         diffasset_expt = round(diffasset_expt, 8)
@@ -358,7 +386,7 @@ class Instance:
             if asset == self.asset: positions['asset'][1] = total
             if asset == self.base: positions['base'][1] = total
 
-        # return positions if first tick
+        # return positions if init
         try:
             diff_asset = round(positions['asset'][1] - self.positions['asset'][1], 8)
             diff_base = round(positions['base'][1] - self.positions['base'][1], 8)
@@ -372,16 +400,6 @@ class Instance:
         return positions
 
     def get_params(self):
-        """
-        Compare recently imported params with previous params
-        Report any changes
-        /- If keys were added or removed
-        /- If values were changed
-        /- Check ranges on changed values
-        /Update self.params
-
-        /Also handle case of initialization in __init__
-        """
         # import config.txt
         params = dict()
         with open("config.txt") as cfg:
@@ -439,9 +457,9 @@ class Instance:
         # New candle?
         if self.candles_raw_unused == self.interval:
             print(100*"=")
-            self.params = self.get_params()
             self.ticks += 1
             self.days = (self.ticks - 1) * self.interval / (60 * 24)
+            self.params = self.get_params()
 
             # get the new candle
             candle_new = dict()
@@ -466,12 +484,26 @@ class Instance:
                     self.candles = self.shrink_list(self.candles, 5000)
 
             # get portfolio
+            data = client.get_symbol_info(self.pair)['filters']
+            min_order = float(data[2]['minQty'])*self.candles[-1]['close']
+            self.min_order = 3*max(min_order, float(data[3]['minNotional']))
+            amt_dec = 8
+            for char in reversed(data[2]['stepSize']):
+                if char == "0": amt_dec -= 1
+                else: break
+            self.amt_dec = amt_dec
+            pt_dec = 8
+            for char in reversed(data[0]['tickSize']):
+                if char == "0": pt_dec -= 1
+                else: break
+            self.pt_dec = pt_dec
+
             self.positions = self.get_positions()
             p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
 
             # tick
-            if self.ticks == 1:
-                self.init_storage(p)
+            #if self.ticks == 1:
+                #self.init_storage(p)
                 #self.get_seeds()
                 #self.updateF()
             self.tick(p)
