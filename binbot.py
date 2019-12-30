@@ -152,6 +152,7 @@ class Instance:
         print("~~ Init ~~")
 
     def tick(self, p):
+        print("~~ Tick ~~")
         s = self.signal
 
         print("Most recent candle:", self.candles[-1])
@@ -167,7 +168,7 @@ class Instance:
         s['rinTarget'] = 1
         if mas > mal: s['rinTarget'] = 0
 
-        print("rinTarget:", s['rinTarget'])
+        print("rinTarget:", s['rinTarget'], "s['rinTargetLast']", s['rinTargetLast'])
 
     def bso(self, p):
         s = self.signal
@@ -444,6 +445,11 @@ class Instance:
 
         return params
 
+    def close_orders(self):
+        orders = client.get_open_orders(symbol = self.pair)
+        for order in orders: 
+            client.cancel_order(symbol = self.pair, orderId = order['orderId'])
+
     def ping(self):
         """ Check for and handle a new candle """
         # New raw candle?
@@ -457,6 +463,7 @@ class Instance:
         # New candle?
         if self.candles_raw_unused == self.interval:
             print(100*"=")
+            self.close_orders()
             self.ticks += 1
             self.days = (self.ticks - 1) * self.interval / (60 * 24)
             self.params = self.get_params()
