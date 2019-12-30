@@ -33,6 +33,8 @@ class Instance:
     def __init__(self, asset, base, interval_mins):
         self.ticks = 0; self.days = 0
         self.params = self.get_params()
+        #self.get_seeds()
+        #self.update_f()
 
         self.exchange = "binance"
         self.asset = str(asset); self.base = str(base)
@@ -145,14 +147,20 @@ class Instance:
         }
         return candle
 
-    def init_storage(self, p):
-        print("~~ Init Storage ~~")
+    #def init_storage(self, p):
+    #    print("~~ init storage ~~")
 
     def init(self):
-        print("~~ Init ~~")
+        print("~~ init ~~")
 
-    def tick(self, p):
-        print("~~ Tick ~~")
+    def strat(self, p):
+        """ strategy / trading algorithm
+        - Use talib for indicators
+        - Talib objects require numpy.array objects as input
+        - rinTarget stands for 'ratio invested target'
+        - Set s['rinTarget'] between 0 and 1. 0 is 0%, 1 is 100% invested
+        """
+        print("~~ trading strategy ~~")
         s = self.signal
 
         print("Most recent candle:", self.candles[-1])
@@ -171,9 +179,9 @@ class Instance:
         print("rinTarget:", s['rinTarget'], "s['rinTargetLast']", s['rinTargetLast'])
 
     def bso(self, p):
+        """ buy/sell/other """
+        print("~~ buy/sell/other ~~")
         s = self.signal
-
-        print("~~ bso ~~")
 
         rbuy = s['rinTarget'] - s['rinTargetLast']
         order_size = 0
@@ -374,6 +382,7 @@ class Instance:
 
     def get_positions(self) -> dict:
         """ Get balances and check dwts """
+        print("~~ get_positions ~~")
         # get balances
         positions = {"asset": [self.asset, 0], "base": [self.base, 0]}
         data = client.get_account()
@@ -447,7 +456,7 @@ class Instance:
 
     def close_orders(self):
         orders = client.get_open_orders(symbol = self.pair)
-        for order in orders: 
+        for order in orders:
             client.cancel_order(symbol = self.pair, orderId = order['orderId'])
 
     def ping(self):
@@ -462,7 +471,8 @@ class Instance:
 
         # New candle?
         if self.candles_raw_unused == self.interval:
-            print(100*"=")
+            # new candle / new tick
+            print(40*"=", "tick", 40*"=")
             self.close_orders()
             self.ticks += 1
             self.days = (self.ticks - 1) * self.interval / (60 * 24)
@@ -508,12 +518,8 @@ class Instance:
             self.positions = self.get_positions()
             p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
 
-            # tick
-            #if self.ticks == 1:
-                #self.init_storage(p)
-                #self.get_seeds()
-                #self.updateF()
-            self.tick(p)
+            # trading strategy, buy/sell/other
+            self.strat(p)
             self.bso(p)
 
 ins = Instance(asset, base, interval_mins)
