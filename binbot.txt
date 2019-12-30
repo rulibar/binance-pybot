@@ -271,3 +271,25 @@ I need to apply the range checks early, before self.params is updated.
 will break.
 - If you accidentally make a typo and save the config file you can break the
 bot and lose your stats. (because of range checking)
+
+12-29
+I think I've successfully programmed the buy and sell methods. It was kind of a
+pain because binance
+- Requires correct decimal precision
+- Has different precision based on the pair
+- Has two requirements for minimum order size
+This will take some more testing before I see if its working properly.
+
+To do list:
+- Make sure the bot cancels all orders at the start of a new tick
+    (mimicking cryptotrader functionality to make my transition faster and easier)
+    - The idea (with this bot) is that you wait for the price then you buy as
+    opposed to placing the buy and then waiting for the price to come to you.
+    - The slippage is intended to make sure that the order gets filled during the
+    candle. If not, the strategy determines a new buy price and tries again.
+- Improve the log update format, consider logs_per_day option, start outputting
+    important information
+    - Program the fake portfolios to track the trade and profit stats
+- Add logging so that the log output saves to a text file and the bot can
+    be run in daemon mode
+- Run a lot of test runs and find problems/bugs and optimize the code
