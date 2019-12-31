@@ -4,16 +4,24 @@ Binance Trading Bot
 
 from binance.client import Client
 from datetime import datetime
+import logging
 import time
 import numpy
 import talib
 
+# get user vars
 api_key = ""
 api_secret = ""
 client = Client(api_key, api_secret)
 
 asset = "BTC"; base = "USDT"
 interval_mins = 30 # [3, 240]
+
+# set up logger
+log_format = "%(levelname)s %(asctime)s - %(message)s"
+logging.basicConfig(filename = "./binbot.log", level = logging.INFO, format = log_format, filemode = "w")
+logger = logging.getLogger()
+logger.info(40 * "=" + " binbot.py " + 40 * "=")
 
 class Portfolio:
     def __init__(self, candle, positions, funds):
@@ -40,14 +48,14 @@ class Instance:
         self.asset = str(asset); self.base = str(base)
         self.pair = self.asset + self.base
         self.interval = int(interval_mins)
-        print("New trader instance started on {} {}m.".format(self.pair, self.interval))
+        logger.info("New trader instance started on {} {}m.".format(self.pair, self.interval))
 
-        print("Getting historical candles...")
+        logger.info("Getting historical candles...")
         self.candles_raw = self._candles_raw_init()
         self.candles = self._candles_init(self.candles_raw)
         self.candles_raw = self.shrink_list(self.candles_raw, 2*self.interval)
         self.candles_raw_unused = self._get_raw_unused()
-        print("Historical candles loaded.")
+        logger.info("Historical candles loaded.")
 
         self.deposits = dict()
         self.withdrawals = dict()
@@ -114,8 +122,8 @@ class Instance:
                 self.candles_raw.append(candle_raw)
                 str_out += "~ {}\n".format(candle_raw)
 
-        print("{} current 1m candles.".format(raw_unused))
-        print(str_out[:-1])
+        logger.info("{} current 1m candles.".format(raw_unused))
+        logger.info(str_out[:-1])
         return raw_unused
 
     def get_historical_candles_method(self, symbol, interval, start_str) -> list:
@@ -125,8 +133,8 @@ class Instance:
                 data = client.get_historical_klines(symbol, interval, start_str)
                 break
             except Exception as e:
-                print("Error:", e)
-                print("Sleeping for 2 seconds and then retrying.")
+                logger.error("Error: '{}'".format(e))
+                logger.error("Sleeping for 2 seconds and then retrying.")
                 time.sleep(2)
         return data
 
@@ -148,10 +156,10 @@ class Instance:
         return candle
 
     #def init_storage(self, p):
-    #    print("~~ init storage ~~")
+    #    logger.info("~~ init storage ~~")
 
     def init(self):
-        print("~~ init ~~")
+        logger.info("~~ init ~~")
 
     def strat(self, p):
         """ strategy / trading algorithm
@@ -160,27 +168,27 @@ class Instance:
         - rinTarget stands for 'ratio invested target'
         - Set s['rinTarget'] between 0 and 1. 0 is 0%, 1 is 100% invested
         """
-        print("~~ trading strategy ~~")
+        logger.info("~~ trading strategy ~~")
         s = self.signal
 
-        print("Most recent candle:", self.candles[-1])
-        print("Positions:", self.positions)
+        logger.info("Most recent candle: " + str(self.candles[-1]))
+        logger.info("Positions: " + str(self.positions))
 
         close_data = numpy.array([c['close'] for c in self.candles])
         mas = round(talib.SMA(close_data, timeperiod = 20)[-1], 8)
         mal = round(talib.SMA(close_data, timeperiod = 100)[-1], 8)
 
-        print("20 SMA:", mas)
-        print("100 SMA:", mal)
+        logger.info("20 SMA: " + str(mas))
+        logger.info("100 SMA: " + str(mal))
 
         s['rinTarget'] = 1
         if mas > mal: s['rinTarget'] = 0
 
-        print("rinTarget:", s['rinTarget'], "s['rinTargetLast']", s['rinTargetLast'])
+        logger.info("s['rinTarget']: {} s['rinTargetLast']: {}".format(s['rinTarget'], s['rinTargetLast']))
 
     def bso(self, p):
         """ buy/sell/other """
-        print("~~ buy/sell/other ~~")
+        logger.info("~~ buy/sell/other ~~")
         s = self.signal
 
         rbuy = s['rinTarget'] - s['rinTargetLast']
@@ -204,24 +212,24 @@ class Instance:
             if rbuy < 0: self.limit_sell(amt, pt)
         if rbuy == 0: order_size = 0
         if order_size == 0:
-            if self.ticks == 1: print("Waiting for a signal to trade...")
+            if self.ticks == 1: logger.info("Waiting for a signal to trade...")
             self.last_order = {"type": "none", "amt": 0, "pt": p.price}
 
     def limit_buy(self, amt, pt):
         try:
-            print("buy amt", amt, "pt", pt, "prod", amt * pt)
+            logging.warning("Trying to buy {} {} for {} {}. (price: {})".format(amt, self.asset, round(amt * pt, self.pt_dec), self.base, pt))
             self.last_order = {"type": "buy", "amt": amt, "pt": pt}
             client.order_limit_buy(symbol = self.pair, quantity = amt, price = pt)
         except Exception as e:
-            print("Error buying. '{}'".format(e))
+            logger.error("Error buying. '{}'".format(e))
 
     def limit_sell(self, amt, pt):
         try:
-            print("sell amt", amt, "pt", pt, "prod", amt * pt)
+            logging.warning("Trying to sell {} {} for {} {}. (price: {})".format(amt, self.asset, round(amt * pt, self.pt_dec), self.base, pt))
             self.last_order = {"type": "sell", "amt": amt, "pt": pt}
             client.order_limit_sell(symbol = self.pair, quantity = amt, price = pt)
         except Exception as e:
-            print("Error buying. '{}'".format(e))
+            logger.error("Error selling. '{}'".format(e))
 
     def get_dwts(self, diffasset, diffbase):
         # get end of previous candle, initialize vars
@@ -267,7 +275,7 @@ class Instance:
                 id = deposit['txId']
                 if id in self.deposits_pending:
                     if deposit['status'] > 0:
-                        print("Deposit processed")
+                        logger.info("Deposit processed")
                         amt = deposit['amount']
                         if deposit['asset'] == base: diffbase_expt += amt
                         else: diffasset_expt += amt
@@ -277,7 +285,7 @@ class Instance:
                 id = withdrawal['id']
                 if id in self.withdrawals_pending:
                     if withdrawal['status'] > 3:
-                        print("Withdrawal processed")
+                        logger.info("Withdrawal processed")
                         amt = withdrawal['amount'] + withdrawal['transactionFee']
                         if withdrawal['asset'] == base: diffbase_expt -= amt
                         else: diffasset_expt -= amt
@@ -294,7 +302,7 @@ class Instance:
                 self.deposits[id] = deposit
                 if deposit['status'] < 1: self.deposits_pending.add(id)
                 else:
-                    print("Deposit processed")
+                    logger.info("Deposit processed")
                     amt = deposit['amount']
                     if deposit['asset'] == base: diffbase_expt += amt
                     else: diffasset_expt += amt
@@ -303,18 +311,18 @@ class Instance:
                 self.withdrawals[id] = withdrawal
                 if withdrawal['status'] < 0: self.withdrawals_pending.add(id)
                 else:
-                    print("Withdrawal processed")
+                    logger.info("Withdrawal processed")
                     amt = withdrawal['amount'] + withdrawal['transactionFee']
                     if withdrawal['asset'] == base: diffbase_expt -= amt
                     else: diffasset_expt -= amt
 
-        print("self.deposits:")
-        for id in self.deposits: print("    ~", id + ":", self.deposits[id])
-        print("self.deposits_pending: ", self.deposits_pending)
-        print("self.withdrawals:")
-        for id in self.withdrawals: print("    ~", id + ":", self.withdrawals[id])
-        print("self.withdrawals_pending: ", self.withdrawals_pending)
-        print("self.earliest_pending: ", self.earliest_pending)
+        logger.info("self.deposits:")
+        for id in self.deposits: logger.info("    ~ " + id + ": " + str(self.deposits[id]))
+        logger.info("self.deposits_pending: " + str(self.deposits_pending))
+        logger.info("self.withdrawals:")
+        for id in self.withdrawals: logger.info("    ~ " + id + ": " + str(self.withdrawals[id]))
+        logger.info("self.withdrawals_pending: " + str(self.withdrawals_pending))
+        logger.info("self.earliest_pending: " + str(self.earliest_pending))
 
         # Get trades
         trades = reversed(client.get_my_trades(symbol = self.pair, limit = 20))
@@ -324,9 +332,9 @@ class Instance:
         diffasset_trad = 0
         diffbase_trad = 0
         if len(trades) > 0:
-            print("{} new trade(s) found.".format(len(trades)))
+            logger.info("{} new trade(s) found.".format(len(trades)))
             for trade in trades:
-                print("~", trade)
+                logger.info("~ " + str(trade))
                 qty = float(trade['qty'])
                 price = float(trade['price'])
                 if not trade['isBuyer']: qty *= -1
@@ -339,23 +347,23 @@ class Instance:
         rTrade = 0
         if l['amt'] != 0: rTrade = abs(diffasset_trad / l['amt'])
         if diffasset_trad > 0:
-            print("Buy detected")
-            print("diffasset_trad", diffasset_trad, "l['amt']", l['amt'])
-            print("rTrade", rTrade)
+            logger.info("Buy detected")
+            logger.info("diffasset_trad " + str(diffasset_trad) + " l['amt'] " + str(l['amt']))
+            logger.info("rTrade " + str(rTrade))
             if l['type'] != "buy":
-                print("Manual buy detected.")
+                logger.info("Manual buy detected.")
                 rTrade = 0
             elif abs(rTrade - 1) > 0.1:
-                print("Buy order partially filled.")
+                logger.info("Buy order partially filled.")
         elif diffasset_trad < 0:
-            print("Sell detected")
-            print("diffasset_trad", diffasset_trad, "l['amt']", l['amt'])
-            print("rTrade", rTrade)
+            logger.info("Sell detected")
+            logger.info("diffasset_trad " + str(diffasset_trad) + " l['amt'] " + str(l['amt']))
+            logger.info("rTrade " + str(rTrade))
             if l['type'] != "sell":
-                print("Manual sell detected")
+                logger.info("Manual sell detected")
                 rTrade = 0
             elif abs(rTrade - 1) > 0.1:
-                print("Sell order partially filled.")
+                logger.info("Sell order partially filled.")
         s['rinTargetLast'] += rTrade * rbuy
 
         # get unknown changes
@@ -365,24 +373,24 @@ class Instance:
         diffbase_unkn = diffbase - diffbase_expt
 
         # process unknown changes
-        if diffasset_unkn > 0: print(diffasset_unkn, self.asset, "has become available.")
-        elif diffasset_unkn < 0: print(-diffasset_unkn, self.asset, "has become unavailable.")
-        if diffbase_unkn > 0: print(diffbase_unkn, self.base, "has become available.")
-        elif diffbase_unkn < 0: print(-diffbase_unkn, self.base, "has become unavailable.")
+        if diffasset_unkn > 0: logger.info("{} {} has become available.".format(diffasset_unkn, self.asset))
+        elif diffasset_unkn < 0: logger.info("{} {} has become unavailable.".format(-diffasset_unkn, self.asset))
+        if diffbase_unkn > 0: logger.info("{} {} has become available.".format(diffbase_unkn, self.base))
+        elif diffbase_unkn < 0: logger.info("{} {} has become unavailable.".format(-diffbase_unkn, self.base))
 
         # log outputs
-        print("diffasset", diffasset)
-        print("diffasset_expt", diffasset_expt)
-        print("diffasset_unkn", diffasset_unkn)
-        print("diffbase", diffbase)
-        print("diffbase_expt", diffbase_expt)
-        print("diffbase_unkn", diffbase_unkn)
+        logger.info("diffasset " + str(diffasset))
+        logger.info("diffasset_expt " + str(diffasset_expt))
+        logger.info("diffasset_unkn " + str(diffasset_unkn))
+        logger.info("diffbase " + str(diffbase))
+        logger.info("diffbase_expt " + str(diffbase_expt))
+        logger.info("diffbase_unkn " + str(diffbase_unkn))
 
         return
 
     def get_positions(self) -> dict:
         """ Get balances and check dwts """
-        print("~~ get_positions ~~")
+        logger.info("~~ get_positions ~~")
         # get balances
         positions = {"asset": [self.asset, 0], "base": [self.base, 0]}
         data = client.get_account()
@@ -422,7 +430,7 @@ class Instance:
         # check values
         funds = float(params['funds'])
         if funds < 0:
-            print("Warning! Maximum amount to invest should be greater than zero.")
+            logger.warning("Warning! Maximum amount to invest should be greater than zero.")
             params['funds'] = "0"
 
         # handle init case
@@ -437,11 +445,11 @@ class Instance:
         keys_removed = {key for key in keys_old if key not in keys_new}
 
         if len(keys_added) > 0:
-            print(len(keys_added), "parameter(s) added.")
-            for key in keys_added: print("~", key, params[key])
+            logger.info("{} parameter(s) added.".format(len(keys_added)))
+            for key in keys_added: logger.info("~ {} {}".format(key, params[key]))
         if len(keys_removed) > 0:
-            print(len(keys_removed), "parameter(s) removed.")
-            for key in keys_removed: print("~", key)
+            logger.info("{} parameter(s) removed.".format(len(keys_removed)))
+            for key in keys_removed: logger.info("~ " + key)
 
         keys_remaining = {key for key in keys_old if key in keys_new}
         keys_changed = set()
@@ -449,12 +457,13 @@ class Instance:
         for key in keys_remaining:
             if params[key] != self.params[key]: keys_changed.add(key)
         if len(keys_changed) > 0:
-            print(len(keys_changed), "parameter(s) changed.")
-            for key in keys_changed: print("~", key, self.params[key], params[key])
+            logger.info("{} parameter(s) changed.".format(len(keys_changed)))
+            for key in keys_changed: logger.info("~ {} {} {}".format(key, self.params[key], params[key]))
 
         return params
 
     def close_orders(self):
+        logger.info("~~ close_orders ~~")
         orders = client.get_open_orders(symbol = self.pair)
         for order in orders:
             client.cancel_order(symbol = self.pair, orderId = order['orderId'])
@@ -472,7 +481,7 @@ class Instance:
         # New candle?
         if self.candles_raw_unused == self.interval:
             # new candle / new tick
-            print(40*"=", "tick", 40*"=")
+            logger.info(40 * "=" + " tick " + 40 * "=")
             self.close_orders()
             self.ticks += 1
             self.days = (self.ticks - 1) * self.interval / (60 * 24)
@@ -517,6 +526,10 @@ class Instance:
 
             self.positions = self.get_positions()
             p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
+
+            # update fake portfolios
+
+            # log output
 
             # trading strategy, buy/sell/other
             self.strat(p)
