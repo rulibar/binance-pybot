@@ -1,0 +1,8 @@
+20-1-1
+To do list:
+- Work on the format of the logs
+- Include relevant stats like bot profits, wins, losses, average win, average
+loss, etc.
+- Program a decent strategy and run a bunch of tests. Clean up, optimize,
+organize, bug fixing, etc.
+- Release first working version
