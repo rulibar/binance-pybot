@@ -4,6 +4,7 @@ Binance Trading Bot
 
 from binance.client import Client
 from datetime import datetime
+import os
 import logging
 import time
 import numpy
@@ -18,9 +19,22 @@ asset = "BTC"; base = "USDT"
 interval_mins = 30 # [3, 240]
 
 # set up logger
-log_format = "%(levelname)s %(asctime)s - %(message)s"
-logging.basicConfig(filename = "./binbot.log", level = logging.INFO, format = log_format, filemode = "w")
+def set_log_file():
+    """ Sets the log file based on the current date in GMT """
+    if not os.path.isdir("./logs/"): os.mkdir("./logs/")
+    gmt = time.gmtime()
+    yy = str(gmt.tm_year)[2:]; mm = str(gmt.tm_mon); dd = str(gmt.tm_mday)
+    if len(mm) == 1: mm = "0" + mm
+    if len(dd) == 1: dd = "0" + dd
+    if not os.path.isdir("./logs/" + yy + mm): os.mkdir("./logs/" + yy + mm)
+    fileh = logging.FileHandler("./logs/{}/{}.log".format(yy + mm, yy + mm + dd), "a")
+    formatter = logging.Formatter("%(levelname)s %(asctime)s - %(message)s")
+    fileh.setFormatter(formatter)
+    logger.handlers = [fileh]
+
+logging.basicConfig(level = logging.INFO)
 logger = logging.getLogger()
+set_log_file()
 logger.info(40 * "=" + " binbot.py " + 40 * "=")
 
 class Portfolio:
@@ -481,6 +495,7 @@ class Instance:
         # New candle?
         if self.candles_raw_unused == self.interval:
             # new candle / new tick
+            set_log_file()
             logger.info(40 * "=" + " tick " + 40 * "=")
             self.close_orders()
             self.ticks += 1
