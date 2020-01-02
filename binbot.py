@@ -55,7 +55,7 @@ class Instance:
     def __init__(self, asset, base, interval_mins):
         self.ticks = 0; self.days = 0
         self.params = self.get_params()
-        #self.get_seeds()
+        self.get_seeds()
 
         self.exchange = "binance"
         self.asset = str(asset); self.base = str(base)
@@ -76,6 +76,8 @@ class Instance:
         self.withdrawals_pending = set()
         self.earliest_pending = 0
 
+        self.candle_start = None
+        self.positions_start = None
         self.positions = self.get_positions()
         self.positions_f = dict(self.positions)
         self.positions_t = dict(self.positions)
@@ -136,10 +138,9 @@ class Instance:
 
             if raw_unused > 0:
                 self.candles_raw.append(candle_raw)
-                str_out += "~ {}\n".format(candle_raw)
+                str_out += "    ~ {}\n".format(candle_raw)
 
-        logger.info("{} current 1m candles.".format(raw_unused))
-        logger.info(str_out[:-1])
+        logger.info("{} current 1m candles.\n{}".format(raw_unused, str_out[:-1]))
         return raw_unused
 
     def get_historical_candles_method(self, symbol, interval, start_str) -> list:
@@ -162,14 +163,19 @@ class Instance:
         # data is a kline list from Binance
         candle = {
             "ts_start": int(data[0]),
-            "open": float(data[1]),
-            "high": float(data[2]),
-            "low": float(data[3]),
-            "close": float(data[4]),
-            "volume": float(data[5]),
+            "open": round(float(data[1]), 8),
+            "high": round(float(data[2]), 8),
+            "low": round(float(data[3]), 8),
+            "close": round(float(data[4]), 8),
+            "volume": round(float(data[5]), 8),
             "ts_end": int(data[6])
         }
         return candle
+
+    def get_seeds(self):
+        logger.info("~~ get_seeds ~~")
+        # get randomization
+        # no randomization yet
 
     #def init_storage(self, p):
     #    logger.info("~~ init storage ~~")
@@ -257,13 +263,19 @@ class Instance:
         diffasset_expt = 0.0
         diffbase_expt = 0.0
 
-        if self.ticks == 1: # first tick
-            # get all pending dws from previous week
-            deposits = client.get_deposit_history(startTime = ts - 1000*60*60*24*7)['depositList']
-            withdrawals = client.get_withdraw_history(startTime = ts - 1000*60*60*24*7)['withdrawList']
-            # filter for asset, remove completed orders
-            deposits = [d for d in deposits if d['asset'] in {asset, base} and d['status'] < 1]
-            withdrawals = [w for w in withdrawals if w['asset'] in {asset, base} and w['status'] < 0]
+        start_time = ts - 1000
+        if self.ticks == 1: start_time = ts - 1000 * 60 * 60 * 24 * 7
+        # get dws
+        deposits = client.get_deposit_history(startTime = start_time)['depositList']
+        withdrawals = client.get_withdraw_history(startTime = start_time)['withdrawList']
+        # filter for asset
+        deposits = [d for d in deposits if d['asset'] in {asset, base}]
+        withdrawals = [w for w in withdrawals if w['asset'] in {asset, base}]
+
+        if self.ticks == 1:
+            # filter completed orders
+            deposits = [d for d in deposits if d['status'] < 1]
+            withdrawals = [w for w in withdrawals if w['status'] < 0]
 
             # Initialize deposits, deposits_pending, withdrawals, withdrawals_pending, earliest_pending
             for deposit in deposits:
@@ -278,15 +290,7 @@ class Instance:
                 self.withdrawals_pending.add(id)
                 if withdrawal['applyTime'] < self.earliest_pending:
                     self.earliest_pending = withdrawal['applyTime']
-
-        else: # not first tick
-            # get all dws starting from 1 s before the earliest pending dw
-            deposits = client.get_deposit_history(startTime = ts - 1000)['depositList']
-            withdrawals = client.get_withdraw_history(startTime = ts - 1000)['withdrawList']
-            # filter for asset
-            deposits = [d for d in deposits if d['asset'] in {asset, base}]
-            withdrawals = [w for w in withdrawals if w['asset'] in {asset, base}]
-
+        else:
             # check if pending dws have been completed then process them
             for deposit in deposits:
                 id = deposit['txId']
@@ -351,14 +355,15 @@ class Instance:
         if len(trades) > 0:
             logger.info("{} new trade(s) found.".format(len(trades)))
             for trade in trades:
-                logger.info("~ " + str(trade))
+                logger.info("    ~ " + str(trade))
                 qty = float(trade['qty'])
                 price = float(trade['price'])
                 if not trade['isBuyer']: qty *= -1
                 diffasset_trad += qty
                 diffbase_trad -= qty * price
-                diffasset_expt += qty
-                diffbase_expt -= qty * price
+
+        diffasset_expt += diffasset_trad
+        diffbase_expt += diffbase_trad
 
         rbuy = s['rinTarget'] - s['rinTargetLast']
         rTrade = 0
@@ -405,6 +410,16 @@ class Instance:
         logger.info("diffbase " + str(diffbase))
         logger.info("diffbase_expt " + str(diffbase_expt))
         logger.info("diffbase_unkn " + str(diffbase_unkn))
+
+        # set position and apc
+        if apc == 0: apc = p.price
+        if p.positionValue > self.min_order:
+            if s['position'] != "long":
+                s['position'] = "long"
+                s['apc'] = apc
+        elif s['position'] != "none":
+            s['position'] = "none"
+            s['apc'] = apc
 
         return
 
@@ -456,10 +471,10 @@ class Instance:
 
         if len(keys_added) > 0:
             logger.info("{} parameter(s) added.".format(len(keys_added)))
-            for key in keys_added: logger.info("~ {} {}".format(key, params[key]))
+            for key in keys_added: logger.info("    ~ {} {}".format(key, params[key]))
         if len(keys_removed) > 0:
             logger.info("{} parameter(s) removed.".format(len(keys_removed)))
-            for key in keys_removed: logger.info("~ " + key)
+            for key in keys_removed: logger.info("    ~ " + key)
 
         keys_remaining = {key for key in keys_old if key in keys_new}
         keys_changed = set()
@@ -468,7 +483,7 @@ class Instance:
             if params[key] != self.params[key]: keys_changed.add(key)
         if len(keys_changed) > 0:
             logger.info("{} parameter(s) changed.".format(len(keys_changed)))
-            for key in keys_changed: logger.info("~ {} {} {}".format(key, self.params[key], params[key]))
+            for key in keys_changed: logger.info("    ~ {} {} {}".format(key, self.params[key], params[key]))
 
         return params
 
@@ -553,7 +568,7 @@ class Instance:
                     self.candles_raw_unused = 0
                     self.candles = self.shrink_list(self.candles, 5000)
 
-            # get portfolio
+            # get vars and portfolio
             data = client.get_symbol_info(self.pair)['filters']
             min_order = float(data[2]['minQty'])*self.candles[-1]['close']
             self.min_order = 3*max(min_order, float(data[3]['minNotional']))
@@ -576,7 +591,43 @@ class Instance:
             diff_base = round(self.positions['base'][1] - self.positions_last['base'][1], 8)
             self.get_dwts(p, diff_asset, diff_base)
 
+            # get performance
+            if self.ticks == 1:
+                self.candle_start = dict(candle_new)
+                self.positions_start = dict(self.positions)
+
+            r = self.performance
+            s = self.signal
+            pos_f = self.positions_f
+            pos_t = self.positions_t
+            c_start = self.candle_start
+            p_start = self.positions_start
+            p_start_size = p_start['base'][1] + c_start['close'] * p_start['asset'][1]
+
+            pfake_size = pos_f['base'][1] + p.price * pos_f['asset'][1]
+            ptrade_size = pos_t['base'][1] + p.price * pos_t['asset'][1]
+
+            r['bh'] = (p.price - c_start['close']) / c_start['close']
+            r['change'] = (p.size - p_start_size) / p_start_size
+            r['bProfits'] = pfake_size - 1
+            r['aProfits'] = (1 + r['bProfits']) / (1 + r['bh']) - 1
+            r['cProfits'] = ptrade_size - 1
+
+            W = int(r['W']); w = float(r['w'])
+            L = int(r['L']); l = float(r['l'])
+            if r['cProfits'] >= 0: W += 1; wSum = r['wSum'] + r['cProfits']; w = wSum / W
+            if r['cProfits'] < 0: L += 1; lSum = r['lSum'] + r['cProfits']; l = lSum / L
+            r['be'] = (1 + w)**W * (1 + l)**L - 1
+
             # log output
+            logger.info("r['bh'] {}%".format(round(100 * r['bh'], 2)))
+            logger.info("r['change'] {}%".format(round(100 * r['change'], 2)))
+            logger.info("r['W'] {} r['w'] {}%".format(r['W'], round(100 * r['w'], 2)))
+            logger.info("r['L'] {} r['l'] {}%".format(r['L'], round(100 * r['l'], 2)))
+            logger.info("r['be'] {}%".format(round(100 * r['be'], 2)))
+            logger.info("r['aProfits'] {}%".format(round(100 * r['aProfits'], 2)))
+            logger.info("r['bProfits'] {}%".format(round(100 * r['bProfits'], 2)))
+            logger.info("r['cProfits'] {}%".format(round(100 * r['cProfits'], 2)))
 
             # trading strategy, buy/sell/other
             self.strat(p)
