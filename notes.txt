@@ -6,3 +6,22 @@ loss, etc.
 - Program a decent strategy and run a bunch of tests. Clean up, optimize,
 organize, bug fixing, etc.
 - Release first working version
+
+***
+
+Essentially, the fake portfolios p_fake and p_trade only store information about
+how much asset and base are owned. The restriction is that the size of the fake
+portfolios totals 1 when they are initialized or reset.
+- p_fake tracks profits from the start disregarding all withdrawals and deposits
+- p_trade tracks profits disregarding all withdrawals and deposits, but is reset
+whenever the bot enters no-position status.
+
+update_f should only be called when fake portfolios are initialized or when
+a trade has been detected.
+- Added a check to cancel the update_f function if apc (avg price current) == 0
+
+So anyways.. I think what I'll do is store p_fake and p_trade as positions data
+structures like self.positions_f and self.positions_t
+- On tick 1 these are set up so that they have the same rin/rinT as the user
+portfolio and they have a total size of 1
+- There is no meaningful fake portfolio between init and tick 1.
