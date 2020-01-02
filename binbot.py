@@ -43,8 +43,8 @@ class Portfolio:
         self.asset = positions['asset'][1]
         self.base = positions['base'][1]
         self.price = candle['close']
-        self.position_value = self.price * self.asset
-        self.size = self.base + self.position_value
+        self.positionValue = self.price * self.asset
+        self.size = self.base + self.positionValue
         self.funds = funds
         if funds > self.size or funds == 0: self.funds = float(self.size)
         self.sizeT = float(self.funds)
@@ -56,7 +56,6 @@ class Instance:
         self.ticks = 0; self.days = 0
         self.params = self.get_params()
         #self.get_seeds()
-        #self.update_f()
 
         self.exchange = "binance"
         self.asset = str(asset); self.base = str(base)
@@ -78,9 +77,12 @@ class Instance:
         self.earliest_pending = 0
 
         self.positions = self.get_positions()
+        self.positions_f = dict(self.positions)
+        self.positions_t = dict(self.positions)
         p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
         self.last_order = {"type": "none", "amt": 0, "pt": self.candles[-1]['close']}
         self.signal = {"rinTarget": p.rinT, "rinTargetLast": p.rinT, "position": "none", "status": 0, "apc": p.price, "target": p.price, "stop": p.price}
+        self.performance = {"bh": 0, "change": 0, "W": 0, "L": 0, "wSum": 0, "lSum": 0, "w": 0, "l": 0, "be": 0, "aProfits": 0, "bProfits": 0, "cProfits": 0}
 
     def _candles_raw_init(self) -> list:
         """ Get enough 1m data to compile 600 historical candles """
@@ -245,10 +247,11 @@ class Instance:
         except Exception as e:
             logger.error("Error selling. '{}'".format(e))
 
-    def get_dwts(self, diffasset, diffbase):
+    def get_dwts(self, p, diffasset, diffbase):
         # get end of previous candle, initialize vars
         l = self.last_order
         s = self.signal
+
         ts_last = self.candles[-2]['ts_end']
         ts = self.earliest_pending
         diffasset_expt = 0.0
@@ -359,6 +362,8 @@ class Instance:
 
         rbuy = s['rinTarget'] - s['rinTargetLast']
         rTrade = 0
+        apc = 0
+        if diffasset_trad != 0: apc = -diffbase_trad / diffasset_trad
         if l['amt'] != 0: rTrade = abs(diffasset_trad / l['amt'])
         if diffasset_trad > 0:
             logger.info("Buy detected")
@@ -379,6 +384,7 @@ class Instance:
             elif abs(rTrade - 1) > 0.1:
                 logger.info("Sell order partially filled.")
         s['rinTargetLast'] += rTrade * rbuy
+        self.update_f(p, apc)
 
         # get unknown changes
         diffasset_expt = round(diffasset_expt, 8)
@@ -405,10 +411,8 @@ class Instance:
     def get_positions(self) -> dict:
         """ Get balances and check dwts """
         logger.info("~~ get_positions ~~")
-        # get balances
         positions = {"asset": [self.asset, 0], "base": [self.base, 0]}
-        data = client.get_account()
-        data = data["balances"]
+        data = client.get_account()["balances"]
         for i in range(len(data)):
             asset = data[i]["asset"]
             if asset not in {self.asset, self.base}: continue
@@ -418,17 +422,10 @@ class Instance:
             if asset == self.asset: positions['asset'][1] = total
             if asset == self.base: positions['base'][1] = total
 
-        # return positions if init
-        try:
-            diff_asset = round(positions['asset'][1] - self.positions['asset'][1], 8)
-            diff_base = round(positions['base'][1] - self.positions['base'][1], 8)
-        except:
+        if self.ticks == 0:
             ts = round(1000*time.time())
             self.earliest_pending = ts
-            return positions
 
-        # check for dwts before returning positions
-        self.get_dwts(diff_asset, diff_base)
         return positions
 
     def get_params(self):
@@ -451,8 +448,7 @@ class Instance:
         try:
             keys_old = {key for key in self.params}
             keys_new = {key for key in params}
-        except:
-            return params
+        except: return params
 
         # check for added, removed, and changed params
         keys_added = {key for key in keys_new if key not in keys_old}
@@ -481,6 +477,39 @@ class Instance:
         orders = client.get_open_orders(symbol = self.pair)
         for order in orders:
             client.cancel_order(symbol = self.pair, orderId = order['orderId'])
+
+    def update_f(self, p, apc):
+        logger.info("~~ update_f ~~")
+        if apc == 0:
+            if self.ticks != 1: return
+            apc = p.price
+        r = self.performance
+        s = self.signal
+        pos_f = self.positions_f
+        pos_t = self.positions_t
+
+        size = p.base + apc * p.asset
+        rin = apc * p.asset / size
+        sizeT = p.funds * (1 - s['rinTargetLast']) + apc * p.asset
+        rinT = apc * p.asset / sizeT
+
+        if self.ticks > 1:
+            size_f = pos_f['base'][1] + apc * pos_f['asset'][1]
+            size_t = pos_t['base'][1] + apc * pos_t['asset'][1]
+            if s['rinTarget'] == 0 and p.positionValue < self.min_order:
+                profit = size_t - 1
+                if profit >= 0: r['wSum'] += profit; r['W'] += 1
+                if profit < 0: r['lSum'] += profit; r['L'] += 1
+                if r['W'] != 0: r['w'] = r['wSum'] / r['W']
+                if r['L'] != 0: r['l'] = r['lSum'] / r['L']
+                size_t = 1
+        else: size_f = 1; size_t = 1
+
+        base_f = (1 - rin) * size_f; base_t = (1 - rinT) * size_t
+        asset_f = (rin / apc) * size_f; asset_t = (rinT / apc) * size_t
+
+        pos_f['base'][1] = base_f; pos_t['base'][1] = base_t
+        pos_f['asset'][1] = asset_f; pos_t['asset'][1] = asset_t
 
     def ping(self):
         """ Check for and handle a new candle """
@@ -539,10 +568,13 @@ class Instance:
                 else: break
             self.pt_dec = pt_dec
 
+            self.positions_last = dict(self.positions)
             self.positions = self.get_positions()
             p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
 
-            # update fake portfolios
+            diff_asset = round(self.positions['asset'][1] - self.positions_last['asset'][1], 8)
+            diff_base = round(self.positions['base'][1] - self.positions_last['base'][1], 8)
+            self.get_dwts(p, diff_asset, diff_base)
 
             # log output
 
