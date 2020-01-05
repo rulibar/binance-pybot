@@ -256,7 +256,7 @@ class Instance:
         except Exception as e:
             logger.error("Error selling. '{}'".format(e))
 
-    def get_dwts(self):
+    def get_dwts(self, p):
         logger.debug("~~ get_dwts ~~")
         l = self.last_order
         s = self.signal
@@ -636,8 +636,8 @@ class Instance:
             # get portfolio
             self.positions_last = dict(self.positions)
             self.positions = self.get_positions()
-            self.get_dwts()
             p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
+            self.get_dwts(p)
 
             # get performance
             self.get_performance(p)
