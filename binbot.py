@@ -32,10 +32,10 @@ def set_log_file():
     fileh.setFormatter(formatter)
     logger.handlers = [fileh]
 
-logging.basicConfig(level = logging.INFO)
+logging.basicConfig(level = logging.DEBUG)
 logger = logging.getLogger()
 set_log_file()
-logger.info(40 * "=" + " binbot.py " + 40 * "=")
+logger.debug(40 * "=" + " binbot.py " + 40 * "=")
 
 class Portfolio:
     def __init__(self, candle, positions, funds):
@@ -61,14 +61,14 @@ class Instance:
         self.asset = str(asset); self.base = str(base)
         self.pair = self.asset + self.base
         self.interval = int(interval_mins)
-        logger.info("New trader instance started on {} {}m.".format(self.pair, self.interval))
+        logger.debug("New trader instance started on {} {}m.".format(self.pair, self.interval))
 
-        logger.info("Getting historical candles...")
+        logger.debug("Getting historical candles...")
         self.candles_raw = self._candles_raw_init()
         self.candles = self._candles_init(self.candles_raw)
         self.candles_raw = self.shrink_list(self.candles_raw, 2*self.interval)
         self.candles_raw_unused = self._get_raw_unused()
-        logger.info("Historical candles loaded.")
+        logger.debug("Historical candles loaded.")
 
         self.deposits = dict()
         self.withdrawals = dict()
@@ -88,12 +88,14 @@ class Instance:
 
     def _candles_raw_init(self) -> list:
         """ Get enough 1m data to compile 600 historical candles """
+        logger.debug("~~ _candles_raw_init ~~")
         data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(600*self.interval))
         for i in range(self.interval - 1): data.pop()
         for i in range(len(data)): data[i] = self.get_candle(data[i])
         return data
 
     def _candles_init(self, candles_raw) -> list:
+        logger.debug("~~ _candles_init ~~")
         # Compile the 1m candles_raw into 30m candles
         candles = list()
         candle_new = dict()
@@ -122,6 +124,7 @@ class Instance:
         return candles[::-1]
 
     def _get_raw_unused(self) -> int:
+        logger.debug("~~ _get_raw_unused ~~")
         # Update candles_raw with recent 1m candles
         # Return how many 1m candles were imported
         raw_unused = -1
@@ -140,7 +143,7 @@ class Instance:
                 self.candles_raw.append(candle_raw)
                 str_out += "    ~ {}\n".format(candle_raw)
 
-        logger.info("{} current 1m candles.\n{}".format(raw_unused, str_out[:-1]))
+        logger.debug("{} current 1m candles.\n{}".format(raw_unused, str_out[:-1]))
         return raw_unused
 
     def get_historical_candles_method(self, symbol, interval, start_str) -> list:
@@ -173,15 +176,15 @@ class Instance:
         return candle
 
     def get_seeds(self):
-        logger.info("~~ get_seeds ~~")
+        logger.debug("~~ get_seeds ~~")
         # get randomization
         # no randomization yet
 
     #def init_storage(self, p):
-    #    logger.info("~~ init storage ~~")
+    #    logger.debug("~~ init storage ~~")
 
     def init(self):
-        logger.info("~~ init ~~")
+        logger.debug("~~ init ~~")
 
     def strat(self, p):
         """ strategy / trading algorithm
@@ -190,7 +193,7 @@ class Instance:
         - rinTarget stands for 'ratio invested target'
         - Set s['rinTarget'] between 0 and 1. 0 is 0%, 1 is 100% invested
         """
-        logger.info("~~ trading strategy ~~")
+        logger.debug("~~ trading strategy ~~")
         s = self.signal
 
         logger.info("Most recent candle: " + str(self.candles[-1]))
@@ -206,11 +209,11 @@ class Instance:
         s['rinTarget'] = 1
         if mas > mal: s['rinTarget'] = 0
 
-        logger.info("s['rinTarget']: {} s['rinTargetLast']: {}".format(s['rinTarget'], s['rinTargetLast']))
+        logger.debug("s['rinTarget']: {} s['rinTargetLast']: {}".format(s['rinTarget'], s['rinTargetLast']))
 
     def bso(self, p):
         """ buy/sell/other """
-        logger.info("~~ buy/sell/other ~~")
+        logger.debug("~~ buy/sell/other ~~")
         s = self.signal
 
         rbuy = s['rinTarget'] - s['rinTargetLast']
@@ -254,6 +257,7 @@ class Instance:
             logger.error("Error selling. '{}'".format(e))
 
     def get_dwts(self, p, diffasset, diffbase):
+        logger.debug("~~ get_dwts ~~")
         # get end of previous candle, initialize vars
         l = self.last_order
         s = self.signal
@@ -296,7 +300,7 @@ class Instance:
                 id = deposit['txId']
                 if id in self.deposits_pending:
                     if deposit['status'] > 0:
-                        logger.info("Deposit processed")
+                        logger.debug("Deposit processed")
                         amt = deposit['amount']
                         if deposit['asset'] == base: diffbase_expt += amt
                         else: diffasset_expt += amt
@@ -306,7 +310,7 @@ class Instance:
                 id = withdrawal['id']
                 if id in self.withdrawals_pending:
                     if withdrawal['status'] > 3:
-                        logger.info("Withdrawal processed")
+                        logger.debug("Withdrawal processed")
                         amt = withdrawal['amount'] + withdrawal['transactionFee']
                         if withdrawal['asset'] == base: diffbase_expt -= amt
                         else: diffasset_expt -= amt
@@ -323,7 +327,7 @@ class Instance:
                 self.deposits[id] = deposit
                 if deposit['status'] < 1: self.deposits_pending.add(id)
                 else:
-                    logger.info("Deposit processed")
+                    logger.debug("Deposit processed")
                     amt = deposit['amount']
                     if deposit['asset'] == base: diffbase_expt += amt
                     else: diffasset_expt += amt
@@ -332,18 +336,18 @@ class Instance:
                 self.withdrawals[id] = withdrawal
                 if withdrawal['status'] < 0: self.withdrawals_pending.add(id)
                 else:
-                    logger.info("Withdrawal processed")
+                    logger.debug("Withdrawal processed")
                     amt = withdrawal['amount'] + withdrawal['transactionFee']
                     if withdrawal['asset'] == base: diffbase_expt -= amt
                     else: diffasset_expt -= amt
 
-        logger.info("self.deposits:")
-        for id in self.deposits: logger.info("    ~ " + id + ": " + str(self.deposits[id]))
-        logger.info("self.deposits_pending: " + str(self.deposits_pending))
-        logger.info("self.withdrawals:")
-        for id in self.withdrawals: logger.info("    ~ " + id + ": " + str(self.withdrawals[id]))
-        logger.info("self.withdrawals_pending: " + str(self.withdrawals_pending))
-        logger.info("self.earliest_pending: " + str(self.earliest_pending))
+        logger.debug("self.deposits:")
+        for id in self.deposits: logger.debug("    ~ " + id + ": " + str(self.deposits[id]))
+        logger.debug("self.deposits_pending: " + str(self.deposits_pending))
+        logger.debug("self.withdrawals:")
+        for id in self.withdrawals: logger.debug("    ~ " + id + ": " + str(self.withdrawals[id]))
+        logger.debug("self.withdrawals_pending: " + str(self.withdrawals_pending))
+        logger.debug("self.earliest_pending: " + str(self.earliest_pending))
 
         # Get trades
         trades = reversed(client.get_my_trades(symbol = self.pair, limit = 20))
@@ -353,9 +357,9 @@ class Instance:
         diffasset_trad = 0
         diffbase_trad = 0
         if len(trades) > 0:
-            logger.info("{} new trade(s) found.".format(len(trades)))
+            logger.debug("{} new trade(s) found.".format(len(trades)))
             for trade in trades:
-                logger.info("    ~ " + str(trade))
+                logger.debug("    ~ " + str(trade))
                 qty = float(trade['qty'])
                 price = float(trade['price'])
                 if not trade['isBuyer']: qty *= -1
@@ -372,8 +376,8 @@ class Instance:
         if l['amt'] != 0: rTrade = abs(diffasset_trad / l['amt'])
         if diffasset_trad > 0:
             logger.info("Buy detected")
-            logger.info("diffasset_trad " + str(diffasset_trad) + " l['amt'] " + str(l['amt']))
-            logger.info("rTrade " + str(rTrade))
+            logger.debug("diffasset_trad " + str(diffasset_trad) + " l['amt'] " + str(l['amt']))
+            logger.debug("rTrade " + str(rTrade))
             if l['type'] != "buy":
                 logger.info("Manual buy detected.")
                 rTrade = 0
@@ -381,8 +385,8 @@ class Instance:
                 logger.info("Buy order partially filled.")
         elif diffasset_trad < 0:
             logger.info("Sell detected")
-            logger.info("diffasset_trad " + str(diffasset_trad) + " l['amt'] " + str(l['amt']))
-            logger.info("rTrade " + str(rTrade))
+            logger.debug("diffasset_trad " + str(diffasset_trad) + " l['amt'] " + str(l['amt']))
+            logger.debug("rTrade " + str(rTrade))
             if l['type'] != "sell":
                 logger.info("Manual sell detected")
                 rTrade = 0
@@ -404,28 +408,26 @@ class Instance:
         elif diffbase_unkn < 0: logger.info("{} {} has become unavailable.".format(-diffbase_unkn, self.base))
 
         # log outputs
-        logger.info("diffasset " + str(diffasset))
-        logger.info("diffasset_expt " + str(diffasset_expt))
-        logger.info("diffasset_unkn " + str(diffasset_unkn))
-        logger.info("diffbase " + str(diffbase))
-        logger.info("diffbase_expt " + str(diffbase_expt))
-        logger.info("diffbase_unkn " + str(diffbase_unkn))
+        logger.debug("diffasset " + str(diffasset))
+        logger.debug("diffasset_expt " + str(diffasset_expt))
+        logger.debug("diffasset_unkn " + str(diffasset_unkn))
+        logger.debug("diffbase " + str(diffbase))
+        logger.debug("diffbase_expt " + str(diffbase_expt))
+        logger.debug("diffbase_unkn " + str(diffbase_unkn))
 
         # set position and apc
         if apc == 0: apc = p.price
         if p.positionValue > self.min_order:
             if s['position'] != "long":
-                s['position'] = "long"
-                s['apc'] = apc
+                s['position'] = "long"; s['apc'] = apc
         elif s['position'] != "none":
-            s['position'] = "none"
-            s['apc'] = apc
+            s['position'] = "none"; s['apc'] = apc
 
         return
 
     def get_positions(self) -> dict:
         """ Get balances and check dwts """
-        logger.info("~~ get_positions ~~")
+        logger.debug("~~ get_positions ~~")
         positions = {"asset": [self.asset, 0], "base": [self.base, 0]}
         data = client.get_account()["balances"]
         for i in range(len(data)):
@@ -444,6 +446,7 @@ class Instance:
         return positions
 
     def get_params(self):
+        logger.debug("~~ get_params ~~")
         # import config.txt
         params = dict()
         with open("config.txt") as cfg:
@@ -488,13 +491,13 @@ class Instance:
         return params
 
     def close_orders(self):
-        logger.info("~~ close_orders ~~")
+        logger.debug("~~ close_orders ~~")
         orders = client.get_open_orders(symbol = self.pair)
         for order in orders:
             client.cancel_order(symbol = self.pair, orderId = order['orderId'])
 
     def update_f(self, p, apc):
-        logger.info("~~ update_f ~~")
+        logger.debug("~~ update_f ~~")
         if apc == 0:
             if self.ticks != 1: return
             apc = p.price
@@ -529,18 +532,22 @@ class Instance:
     def ping(self):
         """ Check for and handle a new candle """
         # New raw candle?
+        if (1000 * time.time() - self.candles_raw[-1]["ts_end"]) < 60000: return
+        logging.debug("ms since last candle: " + str(1000 * time.time() - self.candles_raw[-1]["ts_end"]))
         data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2))
         data_top = self.get_candle(data[0])
         if data_top["ts_end"] != self.candles_raw[-1]["ts_end"]:
+            logging.debug("new raw candle")
             self.candles_raw_unused += 1
             self.candles_raw.append(data_top)
             self.candles_raw = self.candles_raw[-2*self.interval:]
 
         # New candle?
         if self.candles_raw_unused == self.interval:
+            logging.debug("new candle")
             # new candle / new tick
             set_log_file()
-            logger.info(40 * "=" + " tick " + 40 * "=")
+            logger.debug(40 * "=" + " tick " + 40 * "=")
             self.close_orders()
             self.ticks += 1
             self.days = (self.ticks - 1) * self.interval / (60 * 24)
@@ -620,14 +627,14 @@ class Instance:
             r['be'] = (1 + w)**W * (1 + l)**L - 1
 
             # log output
-            logger.info("r['bh'] {}%".format(round(100 * r['bh'], 2)))
-            logger.info("r['change'] {}%".format(round(100 * r['change'], 2)))
-            logger.info("r['W'] {} r['w'] {}%".format(r['W'], round(100 * r['w'], 2)))
-            logger.info("r['L'] {} r['l'] {}%".format(r['L'], round(100 * r['l'], 2)))
-            logger.info("r['be'] {}%".format(round(100 * r['be'], 2)))
-            logger.info("r['aProfits'] {}%".format(round(100 * r['aProfits'], 2)))
-            logger.info("r['bProfits'] {}%".format(round(100 * r['bProfits'], 2)))
-            logger.info("r['cProfits'] {}%".format(round(100 * r['cProfits'], 2)))
+            logger.debug("r['bh'] {}%".format(round(100 * r['bh'], 2)))
+            logger.debug("r['change'] {}%".format(round(100 * r['change'], 2)))
+            logger.debug("r['W'] {} r['w'] {}%".format(r['W'], round(100 * r['w'], 2)))
+            logger.debug("r['L'] {} r['l'] {}%".format(r['L'], round(100 * r['l'], 2)))
+            logger.debug("r['be'] {}%".format(round(100 * r['be'], 2)))
+            logger.debug("r['aProfits'] {}%".format(round(100 * r['aProfits'], 2)))
+            logger.debug("r['bProfits'] {}%".format(round(100 * r['bProfits'], 2)))
+            logger.debug("r['cProfits'] {}%".format(round(100 * r['cProfits'], 2)))
 
             # trading strategy, buy/sell/other
             self.strat(p)
@@ -638,4 +645,4 @@ ins.init()
 
 while True:
     ins.ping()
-    time.sleep(2)
+    time.sleep(0.5)
