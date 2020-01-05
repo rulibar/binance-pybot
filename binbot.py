@@ -55,20 +55,19 @@ class Instance:
     def __init__(self, asset, base, interval_mins):
         self.ticks = 0; self.days = 0
         self.params = self.get_params()
-        self.get_seeds()
 
         self.exchange = "binance"
         self.asset = str(asset); self.base = str(base)
         self.pair = self.asset + self.base
         self.interval = int(interval_mins)
-        logger.debug("New trader instance started on {} {}m.".format(self.pair, self.interval))
+        logger.info("New trader instance started on {} {}m.".format(self.pair, self.interval))
 
-        logger.debug("Getting historical candles...")
+        logger.info("Getting historical candles...")
         self.candles_raw = self._candles_raw_init()
         self.candles = self._candles_init(self.candles_raw)
         self.candles_raw = self.shrink_list(self.candles_raw, 2*self.interval)
         self.candles_raw_unused = self._get_raw_unused()
-        logger.debug("Historical candles loaded.")
+        logger.info("Historical candles loaded.")
 
         self.deposits = dict()
         self.withdrawals = dict()
@@ -85,6 +84,7 @@ class Instance:
         self.last_order = {"type": "none", "amt": 0, "pt": self.candles[-1]['close']}
         self.signal = {"rinTarget": p.rinT, "rinTargetLast": p.rinT, "position": "none", "status": 0, "apc": p.price, "target": p.price, "stop": p.price}
         self.performance = {"bh": 0, "change": 0, "W": 0, "L": 0, "wSum": 0, "lSum": 0, "w": 0, "l": 0, "be": 0, "aProfits": 0, "bProfits": 0, "cProfits": 0}
+        self.get_seeds()
 
     def _candles_raw_init(self) -> list:
         """ Get enough 1m data to compile 600 historical candles """
@@ -256,14 +256,15 @@ class Instance:
         except Exception as e:
             logger.error("Error selling. '{}'".format(e))
 
-    def get_dwts(self, p, diffasset, diffbase):
+    def get_dwts(self):
         logger.debug("~~ get_dwts ~~")
-        # get end of previous candle, initialize vars
         l = self.last_order
         s = self.signal
 
         ts_last = self.candles[-2]['ts_end']
         ts = self.earliest_pending
+        diffasset = round(self.positions['asset'][1] - self.positions_last['asset'][1], 8)
+        diffbase = round(self.positions['base'][1] - self.positions_last['base'][1], 8)
         diffasset_expt = 0.0
         diffbase_expt = 0.0
 
@@ -497,7 +498,6 @@ class Instance:
             client.cancel_order(symbol = self.pair, orderId = order['orderId'])
 
     def update_f(self, p, apc):
-        logger.debug("~~ update_f ~~")
         if apc == 0:
             if self.ticks != 1: return
             apc = p.price
@@ -512,6 +512,7 @@ class Instance:
         rinT = apc * p.asset / sizeT
 
         if self.ticks > 1:
+            logger.debug("update fake portfolios")
             size_f = pos_f['base'][1] + apc * pos_f['asset'][1]
             size_t = pos_t['base'][1] + apc * pos_t['asset'][1]
             if s['rinTarget'] == 0 and p.positionValue < self.min_order:
@@ -521,13 +522,55 @@ class Instance:
                 if r['W'] != 0: r['w'] = r['wSum'] / r['W']
                 if r['L'] != 0: r['l'] = r['lSum'] / r['L']
                 size_t = 1
-        else: size_f = 1; size_t = 1
+        else:
+            logger.debug("init fake portfolios")
+            size_f = 1; size_t = 1
 
         base_f = (1 - rin) * size_f; base_t = (1 - rinT) * size_t
         asset_f = (rin / apc) * size_f; asset_t = (rinT / apc) * size_t
 
         pos_f['base'][1] = base_f; pos_t['base'][1] = base_t
         pos_f['asset'][1] = asset_f; pos_t['asset'][1] = asset_t
+
+    def get_performance(self, p):
+        logger.debug("~~ get_performance ~~")
+        if self.ticks == 1:
+            self.candle_start = dict(self.candles[-1])
+            self.positions_start = dict(self.positions)
+        r = self.performance
+        s = self.signal
+        pos_f = self.positions_f
+        pos_t = self.positions_t
+        c_start = self.candle_start
+        p_start = self.positions_start
+        p_start_size = p_start['base'][1] + c_start['close'] * p_start['asset'][1]
+
+        pfake_size = pos_f['base'][1] + p.price * pos_f['asset'][1]
+        ptrade_size = pos_t['base'][1] + p.price * pos_t['asset'][1]
+
+        r['bh'] = (p.price - c_start['close']) / c_start['close']
+        r['change'] = (p.size - p_start_size) / p_start_size
+        r['bProfits'] = pfake_size - 1
+        r['aProfits'] = (1 + r['bProfits']) / (1 + r['bh']) - 1
+        r['cProfits'] = ptrade_size - 1
+
+        W = int(r['W']); w = float(r['w'])
+        L = int(r['L']); l = float(r['l'])
+        if r['cProfits'] >= 0: W += 1; wSum = r['wSum'] + r['cProfits']; w = wSum / W
+        if r['cProfits'] < 0: L += 1; lSum = r['lSum'] + r['cProfits']; l = lSum / L
+        r['be'] = (1 + w)**W * (1 + l)**L - 1
+
+        logger.debug("r['bh'] {}%".format(round(100 * r['bh'], 2)))
+        logger.debug("r['change'] {}%".format(round(100 * r['change'], 2)))
+        logger.debug("r['W'] {} r['w'] {}%".format(r['W'], round(100 * r['w'], 2)))
+        logger.debug("r['L'] {} r['l'] {}%".format(r['L'], round(100 * r['l'], 2)))
+        logger.debug("r['be'] {}%".format(round(100 * r['be'], 2)))
+        logger.debug("r['aProfits'] {}%".format(round(100 * r['aProfits'], 2)))
+        logger.debug("r['bProfits'] {}%".format(round(100 * r['bProfits'], 2)))
+        logger.debug("r['cProfits'] {}%".format(round(100 * r['cProfits'], 2)))
+
+    def log_update(self, p):
+        logger.debug("~~ log_update ~~")
 
     def ping(self):
         """ Check for and handle a new candle """
@@ -540,7 +583,7 @@ class Instance:
             logging.debug("new raw candle")
             self.candles_raw_unused += 1
             self.candles_raw.append(data_top)
-            self.candles_raw = self.candles_raw[-2*self.interval:]
+            self.candles_raw = self.candles_raw[-2 * self.interval:]
 
         # New candle?
         if self.candles_raw_unused == self.interval:
@@ -575,10 +618,10 @@ class Instance:
                     self.candles_raw_unused = 0
                     self.candles = self.shrink_list(self.candles, 5000)
 
-            # get vars and portfolio
+            # get other vars
             data = client.get_symbol_info(self.pair)['filters']
-            min_order = float(data[2]['minQty'])*self.candles[-1]['close']
-            self.min_order = 3*max(min_order, float(data[3]['minNotional']))
+            min_order = float(data[2]['minQty']) * self.candles[-1]['close']
+            self.min_order = 3 * max(min_order, float(data[3]['minNotional']))
             amt_dec = 8
             for char in reversed(data[2]['stepSize']):
                 if char == "0": amt_dec -= 1
@@ -590,51 +633,17 @@ class Instance:
                 else: break
             self.pt_dec = pt_dec
 
+            # get portfolio
             self.positions_last = dict(self.positions)
             self.positions = self.get_positions()
+            self.get_dwts()
             p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
 
-            diff_asset = round(self.positions['asset'][1] - self.positions_last['asset'][1], 8)
-            diff_base = round(self.positions['base'][1] - self.positions_last['base'][1], 8)
-            self.get_dwts(p, diff_asset, diff_base)
-
             # get performance
-            if self.ticks == 1:
-                self.candle_start = dict(candle_new)
-                self.positions_start = dict(self.positions)
-
-            r = self.performance
-            s = self.signal
-            pos_f = self.positions_f
-            pos_t = self.positions_t
-            c_start = self.candle_start
-            p_start = self.positions_start
-            p_start_size = p_start['base'][1] + c_start['close'] * p_start['asset'][1]
-
-            pfake_size = pos_f['base'][1] + p.price * pos_f['asset'][1]
-            ptrade_size = pos_t['base'][1] + p.price * pos_t['asset'][1]
-
-            r['bh'] = (p.price - c_start['close']) / c_start['close']
-            r['change'] = (p.size - p_start_size) / p_start_size
-            r['bProfits'] = pfake_size - 1
-            r['aProfits'] = (1 + r['bProfits']) / (1 + r['bh']) - 1
-            r['cProfits'] = ptrade_size - 1
-
-            W = int(r['W']); w = float(r['w'])
-            L = int(r['L']); l = float(r['l'])
-            if r['cProfits'] >= 0: W += 1; wSum = r['wSum'] + r['cProfits']; w = wSum / W
-            if r['cProfits'] < 0: L += 1; lSum = r['lSum'] + r['cProfits']; l = lSum / L
-            r['be'] = (1 + w)**W * (1 + l)**L - 1
+            self.get_performance(p)
 
             # log output
-            logger.debug("r['bh'] {}%".format(round(100 * r['bh'], 2)))
-            logger.debug("r['change'] {}%".format(round(100 * r['change'], 2)))
-            logger.debug("r['W'] {} r['w'] {}%".format(r['W'], round(100 * r['w'], 2)))
-            logger.debug("r['L'] {} r['l'] {}%".format(r['L'], round(100 * r['l'], 2)))
-            logger.debug("r['be'] {}%".format(round(100 * r['be'], 2)))
-            logger.debug("r['aProfits'] {}%".format(round(100 * r['aProfits'], 2)))
-            logger.debug("r['bProfits'] {}%".format(round(100 * r['bProfits'], 2)))
-            logger.debug("r['cProfits'] {}%".format(round(100 * r['cProfits'], 2)))
+            self.log_update(p)
 
             # trading strategy, buy/sell/other
             self.strat(p)
