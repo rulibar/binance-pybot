@@ -65,7 +65,7 @@ class Instance:
         logger.info("Getting historical candles...")
         self.candles_raw = self._candles_raw_init()
         self.candles = self._candles_init(self.candles_raw)
-        self.candles_raw = self.shrink_list(self.candles_raw, 2*self.interval)
+        self.candles_raw = self.shrink_list(self.candles_raw, 2 * self.interval)
         self.candles_raw_unused = self._get_raw_unused()
         logger.info("Historical candles loaded.")
 
@@ -89,7 +89,7 @@ class Instance:
     def _candles_raw_init(self) -> list:
         """ Get enough 1m data to compile 600 historical candles """
         logger.debug("~~ _candles_raw_init ~~")
-        data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(600*self.interval))
+        data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(600 * self.interval))
         for i in range(self.interval - 1): data.pop()
         for i in range(len(data)): data[i] = self.get_candle(data[i])
         return data
@@ -129,7 +129,7 @@ class Instance:
         # Return how many 1m candles were imported
         raw_unused = -1
         str_out = str()
-        data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2*self.interval))
+        data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2 * self.interval))
         data.pop()
         for i in range(len(data)):
             candle_raw = self.get_candle(data[i])
@@ -232,7 +232,7 @@ class Instance:
             pt = round(pt, self.pt_dec)
             if rbuy > 0: amt = order_size / pt
             else: amt = order_size / p.price
-            amt = round(0.995*amt*10**self.amt_dec - 2)/10**self.amt_dec
+            amt = round(0.995 * amt * 10**self.amt_dec - 2) / 10**self.amt_dec
             if rbuy > 0: self.limit_buy(amt, pt)
             if rbuy < 0: self.limit_sell(amt, pt)
         if rbuy == 0: order_size = 0
@@ -256,26 +256,18 @@ class Instance:
         except Exception as e:
             logger.error("Error selling. '{}'".format(e))
 
-    def get_dwts(self, p):
-        logger.debug("~~ get_dwts ~~")
-        l = self.last_order
-        s = self.signal
-
+    def get_dws(self):
+        diffasset_dw = 0; diffbase_dw = 0
         ts_last = self.candles[-2]['ts_end']
         ts = self.earliest_pending
-        diffasset = round(self.positions['asset'][1] - self.positions_last['asset'][1], 8)
-        diffbase = round(self.positions['base'][1] - self.positions_last['base'][1], 8)
-        diffasset_expt = 0.0
-        diffbase_expt = 0.0
-
         start_time = ts - 1000
         if self.ticks == 1: start_time = ts - 1000 * 60 * 60 * 24 * 7
         # get dws
         deposits = client.get_deposit_history(startTime = start_time)['depositList']
         withdrawals = client.get_withdraw_history(startTime = start_time)['withdrawList']
         # filter for asset
-        deposits = [d for d in deposits if d['asset'] in {asset, base}]
-        withdrawals = [w for w in withdrawals if w['asset'] in {asset, base}]
+        deposits = [d for d in deposits if d['asset'] in {self.asset, self.base}]
+        withdrawals = [w for w in withdrawals if w['asset'] in {self.asset, self.base}]
 
         if self.ticks == 1:
             # filter completed orders
@@ -303,8 +295,8 @@ class Instance:
                     if deposit['status'] > 0:
                         logger.debug("Deposit processed")
                         amt = deposit['amount']
-                        if deposit['asset'] == base: diffbase_expt += amt
-                        else: diffasset_expt += amt
+                        if deposit['asset'] == self.base: diffbase_dw += amt
+                        else: diffasset_dw += amt
                         self.deposits[id] = deposit
                         self.deposits_pending.remove(id)
             for withdrawal in withdrawals:
@@ -313,8 +305,8 @@ class Instance:
                     if withdrawal['status'] > 3:
                         logger.debug("Withdrawal processed")
                         amt = withdrawal['amount'] + withdrawal['transactionFee']
-                        if withdrawal['asset'] == base: diffbase_expt -= amt
-                        else: diffasset_expt -= amt
+                        if withdrawal['asset'] == self.base: diffbase_dw -= amt
+                        else: diffasset_dw -= amt
                         self.withdrawals[id] = withdrawal
                         self.withdrawals_pending.remove(id)
 
@@ -330,8 +322,8 @@ class Instance:
                 else:
                     logger.debug("Deposit processed")
                     amt = deposit['amount']
-                    if deposit['asset'] == base: diffbase_expt += amt
-                    else: diffasset_expt += amt
+                    if deposit['asset'] == self.base: diffbase_dw += amt
+                    else: diffasset_dw += amt
             for withdrawal in withdrawals:
                 id = withdrawal['id']
                 self.withdrawals[id] = withdrawal
@@ -339,8 +331,8 @@ class Instance:
                 else:
                     logger.debug("Withdrawal processed")
                     amt = withdrawal['amount'] + withdrawal['transactionFee']
-                    if withdrawal['asset'] == base: diffbase_expt -= amt
-                    else: diffasset_expt -= amt
+                    if withdrawal['asset'] == self.base: diffbase_dw -= amt
+                    else: diffasset_dw -= amt
 
         logger.debug("self.deposits:")
         for id in self.deposits: logger.debug("    ~ " + id + ": " + str(self.deposits[id]))
@@ -350,13 +342,18 @@ class Instance:
         logger.debug("self.withdrawals_pending: " + str(self.withdrawals_pending))
         logger.debug("self.earliest_pending: " + str(self.earliest_pending))
 
+        return diffasset_dw, diffbase_dw
+
+    def get_trades(self, p):
+        diffasset_trad = 0; diffbase_trad = 0
+        ts_last = self.candles[-2]['ts_end']
+        l = self.last_order
+        s = self.signal
         # Get trades
         trades = reversed(client.get_my_trades(symbol = self.pair, limit = 20))
         trades = [t for t in trades if t['time'] > ts_last]
 
         # process trades
-        diffasset_trad = 0
-        diffbase_trad = 0
         if len(trades) > 0:
             logger.debug("{} new trade(s) found.".format(len(trades)))
             for trade in trades:
@@ -366,9 +363,6 @@ class Instance:
                 if not trade['isBuyer']: qty *= -1
                 diffasset_trad += qty
                 diffbase_trad -= qty * price
-
-        diffasset_expt += diffasset_trad
-        diffbase_expt += diffbase_trad
 
         rbuy = s['rinTarget'] - s['rinTargetLast']
         rTrade = 0
@@ -396,9 +390,22 @@ class Instance:
         s['rinTargetLast'] += rTrade * rbuy
         self.update_f(p, apc)
 
+        return diffasset_trad, diffbase_trad, apc
+
+    def get_dwts(self, p):
+        logger.debug("~~ get_dwts ~~")
+        s = self.signal
+
+        diffasset = round(self.positions['asset'][1] - self.positions_last['asset'][1], 8)
+        diffbase = round(self.positions['base'][1] - self.positions_last['base'][1], 8)
+
+        # get dws and trades
+        diffasset_dw, diffbase_dw = self.get_dws()
+        diffasset_trad, diffbase_trad, apc = self.get_trades(p)
+
         # get unknown changes
-        diffasset_expt = round(diffasset_expt, 8)
-        diffbase_expt = round(diffbase_expt, 8)
+        diffasset_expt = round(diffasset_dw + diffasset_trad, 8)
+        diffbase_expt = round(diffbase_dw + diffbase_trad, 8)
         diffasset_unkn = diffasset - diffasset_expt
         diffbase_unkn = diffbase - diffbase_expt
 
@@ -441,7 +448,7 @@ class Instance:
             if asset == self.base: positions['base'][1] = total
 
         if self.ticks == 0:
-            ts = round(1000*time.time())
+            ts = round(1000 * time.time())
             self.earliest_pending = ts
 
         return positions
@@ -633,13 +640,11 @@ class Instance:
                 else: break
             self.pt_dec = pt_dec
 
-            # get portfolio
+            # get portfolio and performance
             self.positions_last = dict(self.positions)
             self.positions = self.get_positions()
             p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
             self.get_dwts(p)
-
-            # get performance
             self.get_performance(p)
 
             # log output
