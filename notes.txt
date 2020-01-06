@@ -25,3 +25,22 @@ structures like self.positions_f and self.positions_t
 - On tick 1 these are set up so that they have the same rin/rinT as the user
 portfolio and they have a total size of 1
 - There is no meaningful fake portfolio between init and tick 1.
+
+1-2
+I need to save a copy of the first portfolio and the fist candle to storage.
+The first candle will be a dict object, which is fine.
+The first portfolio though may require me to store a Portfolio object.
+All I need from the first portfolio is the size, really. So by storing just the
+positions and the first candle I can calculate this.
+
+Indeed, I'll store the first candle and the first positions object. From this I
+can calculate the needed initial value.
+
+1-5
+Bot is mostly functional, aside from unforseen bugs and unexpected behavior.
+
+To do list:
+- Program the log output
+- Program a decent strategy
+- Run a bunch of tests
+- Finalize initial version
