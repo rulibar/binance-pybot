@@ -84,7 +84,6 @@ class Instance:
         self.last_order = {"type": "none", "amt": 0, "pt": self.candles[-1]['close']}
         self.signal = {"rinTarget": p.rinT, "rinTargetLast": p.rinT, "position": "none", "status": 0, "apc": p.price, "target": p.price, "stop": p.price}
         self.performance = {"bh": 0, "change": 0, "W": 0, "L": 0, "wSum": 0, "lSum": 0, "w": 0, "l": 0, "be": 0, "aProfits": 0, "bProfits": 0, "cProfits": 0}
-        self.get_seeds()
 
     def _candles_raw_init(self) -> list:
         """ Get enough 1m data to compile 600 historical candles """
@@ -175,16 +174,17 @@ class Instance:
         }
         return candle
 
-    def get_seeds(self):
-        logger.debug("~~ get_seeds ~~")
-        # get randomization
-        # no randomization yet
-
     #def init_storage(self, p):
     #    logger.debug("~~ init storage ~~")
 
     def init(self):
         logger.debug("~~ init ~~")
+        self.bot_name = "Binance Pybot"
+        self.version = "1.0"
+        logger.info("Analyzing the market...")
+        # get randomization
+        # no randomization yet
+        logger.info("Ready to start trading...")
 
     def strat(self, p):
         """ strategy / trading algorithm
@@ -196,25 +196,21 @@ class Instance:
         logger.debug("~~ trading strategy ~~")
         s = self.signal
 
-        logger.info("Most recent candle: " + str(self.candles[-1]))
-        logger.info("Positions: " + str(self.positions))
-
         close_data = numpy.array([c['close'] for c in self.candles])
         mas = round(talib.SMA(close_data, timeperiod = 20)[-1], 8)
         mal = round(talib.SMA(close_data, timeperiod = 100)[-1], 8)
 
-        logger.info("20 SMA: " + str(mas))
-        logger.info("100 SMA: " + str(mal))
+        logger.debug("20 SMA: " + str(mas))
+        logger.debug("100 SMA: " + str(mal))
 
         s['rinTarget'] = 1
         if mas > mal: s['rinTarget'] = 0
-
-        logger.debug("s['rinTarget']: {} s['rinTargetLast']: {}".format(s['rinTarget'], s['rinTargetLast']))
 
     def bso(self, p):
         """ buy/sell/other """
         logger.debug("~~ buy/sell/other ~~")
         s = self.signal
+        logger.debug("s['rinTarget']: {} s['rinTargetLast']: {}".format(s['rinTarget'], s['rinTargetLast']))
 
         rbuy = s['rinTarget'] - s['rinTargetLast']
         order_size = 0
@@ -578,6 +574,8 @@ class Instance:
 
     def log_update(self, p):
         logger.debug("~~ log_update ~~")
+        logger.debug("Most recent candle: " + str(self.candles[-1]))
+        logger.debug("Positions: " + str(self.positions))
 
     def ping(self):
         """ Check for and handle a new candle """
