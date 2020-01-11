@@ -53,6 +53,7 @@ class Portfolio:
 
 class Instance:
     def __init__(self, asset, base, interval_mins):
+        self.next_log = 0
         self.ticks = 0; self.days = 0; self.trades = 0
         self.exchange = "binance"
         self.asset = str(asset); self.base = str(base)
@@ -617,6 +618,46 @@ class Instance:
         logger.info("Bot profits: {}%".format(round(100 * r['bProfits'], 2)))
         logger.info("Buy and hold: {}%".format(round(100 * r['bh'], 2)))
 
+    def get_new_candle(self):
+        candle_new = dict()
+        for i in range(self.interval):
+            candle_raw = self.candles_raw[-1 - i]
+
+            if i == 0:
+                candle_new = candle_raw
+                continue
+
+            if candle_raw["high"] > candle_new["high"]:
+                candle_new["high"] = candle_raw["high"]
+            if candle_raw["low"] < candle_new["low"]:
+                candle_new["low"] = candle_raw["low"]
+            candle_new["volume"] += candle_raw["volume"]
+
+            if i == self.interval - 1:
+                candle_new["open"] = candle_raw["open"]
+                candle_new["ts_start"] = candle_raw["ts_start"]
+                self.candles.append(candle_new)
+                self.candles_raw_unused = 0
+                self.candles = self.shrink_list(self.candles, 5000)
+
+    def update_vars(self):
+        self.ticks += 1
+        self.days = (self.ticks - 1) * self.interval / (60 * 24)
+
+        data = client.get_symbol_info(self.pair)['filters']
+        min_order = float(data[2]['minQty']) * self.candles[-1]['close']
+        self.min_order = 3 * max(min_order, float(data[3]['minNotional']))
+        amt_dec = 8
+        for char in reversed(data[2]['stepSize']):
+            if char == "0": amt_dec -= 1
+            else: break
+        self.amt_dec = amt_dec
+        pt_dec = 8
+        for char in reversed(data[0]['tickSize']):
+            if char == "0": pt_dec -= 1
+            else: break
+        self.pt_dec = pt_dec
+
     def ping(self):
         """ Check for and handle a new candle """
         # New raw candle?
@@ -636,47 +677,10 @@ class Instance:
             # new candle / new tick
             set_log_file()
             logger.debug(40 * "#" + " tick " + 40 * "#")
+            self.update_vars()
             self.close_orders()
-            self.ticks += 1
-            self.days = (self.ticks - 1) * self.interval / (60 * 24)
             self.get_params()
-
-            # get the new candle
-            candle_new = dict()
-            for i in range(self.interval):
-                candle_raw = self.candles_raw[-1 - i]
-
-                if i == 0:
-                    candle_new = candle_raw
-                    continue
-
-                if candle_raw["high"] > candle_new["high"]:
-                    candle_new["high"] = candle_raw["high"]
-                if candle_raw["low"] < candle_new["low"]:
-                    candle_new["low"] = candle_raw["low"]
-                candle_new["volume"] += candle_raw["volume"]
-
-                if i == self.interval - 1:
-                    candle_new["open"] = candle_raw["open"]
-                    candle_new["ts_start"] = candle_raw["ts_start"]
-                    self.candles.append(candle_new)
-                    self.candles_raw_unused = 0
-                    self.candles = self.shrink_list(self.candles, 5000)
-
-            # get other vars
-            data = client.get_symbol_info(self.pair)['filters']
-            min_order = float(data[2]['minQty']) * self.candles[-1]['close']
-            self.min_order = 3 * max(min_order, float(data[3]['minNotional']))
-            amt_dec = 8
-            for char in reversed(data[2]['stepSize']):
-                if char == "0": amt_dec -= 1
-                else: break
-            self.amt_dec = amt_dec
-            pt_dec = 8
-            for char in reversed(data[0]['tickSize']):
-                if char == "0": pt_dec -= 1
-                else: break
-            self.pt_dec = pt_dec
+            self.get_new_candle()
 
             # get portfolio and performance
             self.positions_last = dict(self.positions)
@@ -686,7 +690,10 @@ class Instance:
             self.get_performance(p)
 
             # log output
-            self.log_update(p)
+            if self.params['logs_per_day'] == "0": self.next_log = self.days + 1
+            if self.days >= self.next_log:
+                self.log_update(p)
+                self.next_log += 1 / float(self.params['logs_per_day'])
 
             # trading strategy, buy/sell/other
             self.strat(p)
