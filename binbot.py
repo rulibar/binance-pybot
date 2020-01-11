@@ -59,7 +59,7 @@ class Instance:
         self.pair = self.asset + self.base
         self.interval = int(interval_mins)
         logger.info("New trader instance started on {} {}m.".format(self.pair, self.interval))
-        self.params = self.get_params()
+        self.get_params()
 
         logger.debug("Getting historical candles...")
         self.candles_raw = self._candles_raw_init()
@@ -463,23 +463,17 @@ class Instance:
             logger.warning("Warning! Maximum amount to invest should be greater than zero.")
             params['funds'] = "0"
 
-        # handle init case
-        try:
-            keys_old = {key for key in self.params}
-            keys_new = {key for key in params}
-        except:
-            params_clone = dict(params)
-            if params['funds'] == 0: logger.info("No maximum investment amount specified.")
-            else: logger.info("Maximum investment amount set to {} {}.".format(params['funds'], self.base))
-            del params_clone['funds']
-            if len(params_clone) > 0:
-                str_out = "{} additional params imported.\n".format(len(params_clone))
-                for param in params_clone:
-                    str_out += "    ~ {}: {}\n".format(param, params_clone[param])
-                logger.info(str_out[:-1])
-            return params
+        logs_per_day = float(params['logs_per_day'])
+        if logs_per_day < 0:
+            logger.warning("Warning! Logs per day should be zero or greater.")
+            params['logs_per_day'] = "1"
 
-        # check for added, removed, and changed params
+        # check for additions and removals
+        if self.ticks == 0: self.params = dict()
+
+        keys_old = {key for key in self.params}
+        keys_new = {key for key in params}
+
         keys_added = {key for key in keys_new if key not in keys_old}
         keys_removed = {key for key in keys_old if key not in keys_new}
 
@@ -490,16 +484,32 @@ class Instance:
             logger.info("{} parameter(s) removed.".format(len(keys_removed)))
             for key in keys_removed: logger.info("    ~ " + key)
 
+        # check for changes
         keys_remaining = {key for key in keys_old if key in keys_new}
         keys_changed = set()
 
         for key in keys_remaining:
             if params[key] != self.params[key]: keys_changed.add(key)
+
+        if self.ticks == 0: keys_changed.add('funds'); keys_changed.add('logs_per_day')
+
+        if "funds" in keys_changed:
+            if params['funds'] == 0: logger.info("No maximum investment amount specified.")
+            else: logger.info("Maximum investment amount set to {} {}.".format(params['funds'], self.base))
+            self.params['funds'] = params['funds']
+            keys_changed.remove('funds')
+        if "logs_per_day" in keys_changed:
+            if params['logs_per_day'] == 0: logger.info("Log updates turned off.")
+            elif params['logs_per_day'] == 1: logger.info("Logs updating once per day.")
+            else: logger.info("Logs updating {} times per day".format(params['logs_per_day']))
+            self.params['logs_per_day'] = params['logs_per_day']
+            keys_changed.remove('logs_per_day')
+
         if len(keys_changed) > 0:
             logger.info("{} parameter(s) changed.".format(len(keys_changed)))
-            for key in keys_changed: logger.info("    ~ {} {} {}".format(key, self.params[key], params[key]))
-
-        return params
+            for key in keys_changed:
+                logger.info("    ~ {} {} {}".format(key, self.params[key], params[key]))
+                self.params[key] = params[key]
 
     def close_orders(self):
         logger.debug("~~ close_orders ~~")
@@ -629,7 +639,7 @@ class Instance:
             self.close_orders()
             self.ticks += 1
             self.days = (self.ticks - 1) * self.interval / (60 * 24)
-            self.params = self.get_params()
+            self.get_params()
 
             # get the new candle
             candle_new = dict()
