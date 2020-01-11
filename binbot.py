@@ -596,7 +596,7 @@ class Instance:
         logger.debug("Positions: " + str(self.positions))
         r = self.performance
 
-        hr = 8 * "#####"
+        hr = 6 * "#####"
         tpd = float()
         if self.days != 0: tpd = self.trades / self.days
         trades = "{} trades ({} per day)".format(int(self.trades), round(tpd, 2))
@@ -605,6 +605,10 @@ class Instance:
         assets = "{} {}".format(round(p.asset, 8), self.asset)
         assetvalue = "{} {}".format(round(p.positionValue, 8), self.base)
         accountvalue = "{} {}".format(round(p.size, 8), self.base)
+        boteff = "{}% {},".format(round(100 * r['be'], 2), self.base)
+        boteff += " {}% {}".format(round(100 * ((1 + r['be']) / (1 + r['bh'])) - 100, 2), self.asset)
+        botprof = "{}% {},".format(round(100 * r['bProfits'], 2), self.base)
+        botprof += " {}% {}".format(round(100 * ((1 + r['bProfits']) / (1 + r['bh'])) - 100, 2), self.asset)
 
         logger.info("{} {} {} {}".format(hr, self.exchange.title(), self.pair, hr))
         logger.info("Days since start: {} | Trades: {}".format(round(self.days, 2), trades))
@@ -614,11 +618,12 @@ class Instance:
         logger.info("Wins: {} | Average win: {}%".format(r['W'], round(100 * r['w'], 2)))
         logger.info("Losses: {} | Average loss: {}%".format(r['L'], round(100 * r['l'], 2)))
         logger.info("Current profits: {}%".format(round(100 * r['cProfits'], 2)))
-        logger.info("Bot efficiency: {}%".format(round(100 * r['be'], 2)))
-        logger.info("Bot profits: {}%".format(round(100 * r['bProfits'], 2)))
+        logger.info("Bot efficiency: {}".format(boteff))
+        logger.info("Bot profits: {}".format(botprof))
         logger.info("Buy and hold: {}%".format(round(100 * r['bh'], 2)))
 
     def get_new_candle(self):
+        logger.debug("~~ get_new_candle ~~")
         candle_new = dict()
         for i in range(self.interval):
             candle_raw = self.candles_raw[-1 - i]
@@ -641,6 +646,7 @@ class Instance:
                 self.candles = self.shrink_list(self.candles, 5000)
 
     def update_vars(self):
+        logger.debug("~~ update_vars ~~")
         self.ticks += 1
         self.days = (self.ticks - 1) * self.interval / (60 * 24)
 
@@ -662,7 +668,7 @@ class Instance:
         """ Check for and handle a new candle """
         # New raw candle?
         if (1000 * time.time() - self.candles_raw[-1]["ts_end"]) < 60000: return
-        logging.debug("ms since last candle: " + str(1000 * time.time() - self.candles_raw[-1]["ts_end"]))
+        logging.debug("ms since last raw candle: " + str(1000 * time.time() - self.candles_raw[-1]["ts_end"]))
         data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2))
         data_top = self.get_candle(data[0])
         if data_top["ts_end"] != self.candles_raw[-1]["ts_end"]:
@@ -673,12 +679,14 @@ class Instance:
 
         # New candle?
         if self.candles_raw_unused == self.interval:
+            # init log
             logging.debug("new candle")
-            # new candle / new tick
-            set_log_file()
             logger.debug(40 * "#" + " tick " + 40 * "#")
-            self.update_vars()
+            set_log_file()
+
+            # close orders, get preliminary vars, params, and new candle
             self.close_orders()
+            self.update_vars()
             self.get_params()
             self.get_new_candle()
 
