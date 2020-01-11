@@ -32,10 +32,10 @@ def set_log_file():
     fileh.setFormatter(formatter)
     logger.handlers = [fileh]
 
-logging.basicConfig(level = logging.DEBUG)
+logging.basicConfig(level = logging.INFO)
 logger = logging.getLogger()
 set_log_file()
-logger.debug(40 * "=" + " binbot.py " + 40 * "=")
+logger.debug(50 * "#" + " binbot.py " + 50 * "#")
 
 class Portfolio:
     def __init__(self, candle, positions, funds):
@@ -53,21 +53,20 @@ class Portfolio:
 
 class Instance:
     def __init__(self, asset, base, interval_mins):
-        self.ticks = 0; self.days = 0
-        self.params = self.get_params()
-
+        self.ticks = 0; self.days = 0; self.trades = 0
         self.exchange = "binance"
         self.asset = str(asset); self.base = str(base)
         self.pair = self.asset + self.base
         self.interval = int(interval_mins)
         logger.info("New trader instance started on {} {}m.".format(self.pair, self.interval))
+        self.params = self.get_params()
 
-        logger.info("Getting historical candles...")
+        logger.debug("Getting historical candles...")
         self.candles_raw = self._candles_raw_init()
         self.candles = self._candles_init(self.candles_raw)
         self.candles_raw = self.shrink_list(self.candles_raw, 2 * self.interval)
         self.candles_raw_unused = self._get_raw_unused()
-        logger.info("Historical candles loaded.")
+        logger.debug("Historical candles loaded.")
 
         self.deposits = dict()
         self.withdrawals = dict()
@@ -84,6 +83,7 @@ class Instance:
         self.last_order = {"type": "none", "amt": 0, "pt": self.candles[-1]['close']}
         self.signal = {"rinTarget": p.rinT, "rinTargetLast": p.rinT, "position": "none", "status": 0, "apc": p.price, "target": p.price, "stop": p.price}
         self.performance = {"bh": 0, "change": 0, "W": 0, "L": 0, "wSum": 0, "lSum": 0, "w": 0, "l": 0, "be": 0, "aProfits": 0, "bProfits": 0, "cProfits": 0}
+        self.init(p)
 
     def _candles_raw_init(self) -> list:
         """ Get enough 1m data to compile 600 historical candles """
@@ -174,10 +174,7 @@ class Instance:
         }
         return candle
 
-    #def init_storage(self, p):
-    #    logger.debug("~~ init storage ~~")
-
-    def init(self):
+    def init(self, p):
         logger.debug("~~ init ~~")
         self.bot_name = "Binance Pybot"
         self.version = "1.0"
@@ -470,7 +467,17 @@ class Instance:
         try:
             keys_old = {key for key in self.params}
             keys_new = {key for key in params}
-        except: return params
+        except:
+            params_clone = dict(params)
+            if params['funds'] == 0: logger.info("No maximum investment amount specified.")
+            else: logger.info("Maximum investment amount set to {} {}.".format(params['funds'], self.base))
+            del params_clone['funds']
+            if len(params_clone) > 0:
+                str_out = "{} additional params imported.\n".format(len(params_clone))
+                for param in params_clone:
+                    str_out += "    ~ {}: {}\n".format(param, params_clone[param])
+                logger.info(str_out[:-1])
+            return params
 
         # check for added, removed, and changed params
         keys_added = {key for key in keys_new if key not in keys_old}
@@ -520,8 +527,8 @@ class Instance:
             size_t = pos_t['base'][1] + apc * pos_t['asset'][1]
             if s['rinTarget'] == 0 and p.positionValue < self.min_order:
                 profit = size_t - 1
-                if profit >= 0: r['wSum'] += profit; r['W'] += 1
-                if profit < 0: r['lSum'] += profit; r['L'] += 1
+                if profit >= 0: r['wSum'] += profit; r['W'] += 1; self.trades += 1
+                if profit < 0: r['lSum'] += profit; r['L'] += 1; self.trades += 1
                 if r['W'] != 0: r['w'] = r['wSum'] / r['W']
                 if r['L'] != 0: r['l'] = r['lSum'] / r['L']
                 size_t = 1
@@ -576,6 +583,29 @@ class Instance:
         logger.debug("~~ log_update ~~")
         logger.debug("Most recent candle: " + str(self.candles[-1]))
         logger.debug("Positions: " + str(self.positions))
+        r = self.performance
+
+        hr = 8 * "#####"
+        tpd = float()
+        if self.days != 0: tpd = self.trades / self.days
+        trades = "{} trades ({} per day)".format(int(self.trades), round(tpd, 2))
+        currency = "{} {}".format(round(p.base, 8), self.base)
+        price = "{} {}/{}".format(round(p.price, 8), self.base, self.asset)
+        assets = "{} {}".format(round(p.asset, 8), self.asset)
+        assetvalue = "{} {}".format(round(p.positionValue, 8), self.base)
+        accountvalue = "{} {}".format(round(p.size, 8), self.base)
+
+        logger.info("{} {} {} {}".format(hr, self.exchange.title(), self.pair, hr))
+        logger.info("Days since start: {} | Trades: {}".format(round(self.days, 2), trades))
+        logger.info("Currency: {} | Current price: {}".format(currency, price))
+        logger.info("Assets: {} | Value of assets: {}".format(assets, assetvalue))
+        logger.info("Value of account: {}".format(accountvalue))
+        logger.info("Wins: {} | Average win: {}%".format(r['W'], round(100 * r['w'], 2)))
+        logger.info("Losses: {} | Average loss: {}%".format(r['L'], round(100 * r['l'], 2)))
+        logger.info("Current profits: {}%".format(round(100 * r['cProfits'], 2)))
+        logger.info("Bot efficiency: {}%".format(round(100 * r['be'], 2)))
+        logger.info("Bot profits: {}%".format(round(100 * r['bProfits'], 2)))
+        logger.info("Buy and hold: {}%".format(round(100 * r['bh'], 2)))
 
     def ping(self):
         """ Check for and handle a new candle """
@@ -595,7 +625,7 @@ class Instance:
             logging.debug("new candle")
             # new candle / new tick
             set_log_file()
-            logger.debug(40 * "=" + " tick " + 40 * "=")
+            logger.debug(40 * "#" + " tick " + 40 * "#")
             self.close_orders()
             self.ticks += 1
             self.days = (self.ticks - 1) * self.interval / (60 * 24)
@@ -653,8 +683,6 @@ class Instance:
             self.bso(p)
 
 ins = Instance(asset, base, interval_mins)
-ins.init()
-
 while True:
     ins.ping()
     time.sleep(0.5)
