@@ -64,8 +64,8 @@ class Instance:
         self.get_params()
 
         logger.debug("Getting historical candles...")
-        self.candles_raw = self._candles_raw_init()
-        self.candles = self._candles_init(self.candles_raw)
+        self.candles_raw = self._get_candles_raw()
+        self.candles = self._get_candles()
         self.candles_raw = self.shrink_list(self.candles_raw, 2 * self.interval)
         self.candles_raw_unused = self._get_raw_unused()
         logger.debug("Historical candles loaded.")
@@ -87,23 +87,23 @@ class Instance:
         self.performance = {"bh": 0, "change": 0, "W": 0, "L": 0, "wSum": 0, "lSum": 0, "w": 0, "l": 0, "be": 0, "aProfits": 0, "bProfits": 0, "cProfits": 0}
         self.init(p)
 
-    def _candles_raw_init(self) -> list:
+    def _get_candles_raw(self) -> list:
         """ Get enough 1m data to compile 600 historical candles """
-        logger.debug("~~ _candles_raw_init ~~")
+        logger.debug("~~ _get_candles_raw ~~")
         data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(600 * self.interval))
         for i in range(self.interval - 1): data.pop()
         for i in range(len(data)): data[i] = self.get_candle(data[i])
         return data
 
-    def _candles_init(self, candles_raw) -> list:
-        logger.debug("~~ _candles_init ~~")
+    def _get_candles(self) -> list:
+        logger.debug("~~ _get_candles ~~")
         # Compile the 1m candles_raw into 30m candles
         candles = list()
         candle_new = dict()
-        for i in range(len(candles_raw)):
+        for i in range(len(self.candles_raw)):
             order = (i + 1) % self.interval
             # [1, 2, ..., interval - 1, 0, 1, 2, ...]
-            candle_raw = candles_raw[len(candles_raw) - 1 - i]
+            candle_raw = self.candles_raw[- 1 - i]
             # Going backwards through candles_raw to have control over how long
             # until next candle
 
@@ -672,13 +672,12 @@ class Instance:
 
     def ping(self):
         """ Check for and handle a new candle """
-        # New raw candle?
         if (1000 * time.time() - self.candles_raw[-1]["ts_end"]) < 60000: return
-        logging.debug("ms since last raw candle: " + str(1000 * time.time() - self.candles_raw[-1]["ts_end"]))
+        logger.debug("~~ ping ~~")
         data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2))
         data_top = self.get_candle(data[0])
+        # New raw candle?
         if data_top["ts_end"] != self.candles_raw[-1]["ts_end"]:
-            logging.debug("new raw candle")
             self.candles_raw_unused += 1
             self.candles_raw.append(data_top)
             self.candles_raw = self.candles_raw[-2 * self.interval:]
@@ -686,7 +685,6 @@ class Instance:
         # New candle?
         if self.candles_raw_unused == self.interval:
             # init log
-            logging.debug("new candle")
             logger.debug(40 * "#" + " tick " + 40 * "#")
             set_log_file()
 
