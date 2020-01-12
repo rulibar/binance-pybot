@@ -548,10 +548,10 @@ class Instance:
         diffbase_unkn = diffbase - diffbase_expt
 
         # process unknown changes
-        if diffasset_unkn > 0: logger.info("{} {} has become available.".format(diffasset_unkn, self.asset))
-        elif diffasset_unkn < 0: logger.info("{} {} has become unavailable.".format(-diffasset_unkn, self.asset))
-        if diffbase_unkn > 0: logger.info("{} {} has become available.".format(diffbase_unkn, self.base))
-        elif diffbase_unkn < 0: logger.info("{} {} has become unavailable.".format(-diffbase_unkn, self.base))
+        if diffasset_unkn > 0: logger.info("{} {} has become available.".format(round(diffasset_unkn, 8), self.asset))
+        elif diffasset_unkn < 0: logger.info("{} {} has become unavailable.".format(round(-diffasset_unkn, 8), self.asset))
+        if diffbase_unkn > 0: logger.info("{} {} has become available.".format(round(diffbase_unkn, 8), self.base))
+        elif diffbase_unkn < 0: logger.info("{} {} has become unavailable.".format(round(-diffbase_unkn, 8), self.base))
 
         # log outputs
         logger.debug("diffasset " + str(diffasset))
@@ -667,8 +667,8 @@ class Instance:
         logger.debug("20 SMA: " + str(mas))
         logger.debug("100 SMA: " + str(mal))
 
-        s['rinTarget'] = 1
-        if mas > mal: s['rinTarget'] = 0
+        s['rinTarget'] = 0
+        if mas > mal: s['rinTarget'] = 1
 
     def ping(self):
         """ Check for and handle a new candle """
