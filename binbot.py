@@ -176,34 +176,21 @@ class Instance:
         }
         return candle
 
-    def init(self, p):
-        logger.debug("~~ init ~~")
-        self.bot_name = "Binance Pybot"
-        self.version = "1.0"
-        logger.info("Analyzing the market...")
-        # get randomization
-        # no randomization yet
-        logger.info("Ready to start trading...")
+    def limit_buy(self, amt, pt):
+        try:
+            logging.warning("Trying to buy {} {} for {} {}. (price: {})".format(amt, self.asset, round(amt * pt, self.pt_dec), self.base, pt))
+            self.last_order = {"type": "buy", "amt": amt, "pt": pt}
+            client.order_limit_buy(symbol = self.pair, quantity = amt, price = pt)
+        except Exception as e:
+            logger.error("Error buying. '{}'".format(e))
 
-    def strat(self, p):
-        """ strategy / trading algorithm
-        - Use talib for indicators
-        - Talib objects require numpy.array objects as input
-        - rinTarget stands for 'ratio invested target'
-        - Set s['rinTarget'] between 0 and 1. 0 is 0%, 1 is 100% invested
-        """
-        logger.debug("~~ trading strategy ~~")
-        s = self.signal
-
-        close_data = numpy.array([c['close'] for c in self.candles])
-        mas = round(talib.SMA(close_data, timeperiod = 20)[-1], 8)
-        mal = round(talib.SMA(close_data, timeperiod = 100)[-1], 8)
-
-        logger.debug("20 SMA: " + str(mas))
-        logger.debug("100 SMA: " + str(mal))
-
-        s['rinTarget'] = 1
-        if mas > mal: s['rinTarget'] = 0
+    def limit_sell(self, amt, pt):
+        try:
+            logging.warning("Trying to sell {} {} for {} {}. (price: {})".format(amt, self.asset, round(amt * pt, self.pt_dec), self.base, pt))
+            self.last_order = {"type": "sell", "amt": amt, "pt": pt}
+            client.order_limit_sell(symbol = self.pair, quantity = amt, price = pt)
+        except Exception as e:
+            logger.error("Error selling. '{}'".format(e))
 
     def bso(self, p):
         """ buy/sell/other """
@@ -235,21 +222,173 @@ class Instance:
             if self.ticks == 1: logger.info("Waiting for a signal to trade...")
             self.last_order = {"type": "none", "amt": 0, "pt": p.price}
 
-    def limit_buy(self, amt, pt):
-        try:
-            logging.warning("Trying to buy {} {} for {} {}. (price: {})".format(amt, self.asset, round(amt * pt, self.pt_dec), self.base, pt))
-            self.last_order = {"type": "buy", "amt": amt, "pt": pt}
-            client.order_limit_buy(symbol = self.pair, quantity = amt, price = pt)
-        except Exception as e:
-            logger.error("Error buying. '{}'".format(e))
+    def close_orders(self):
+        logger.debug("~~ close_orders ~~")
+        orders = client.get_open_orders(symbol = self.pair)
+        for order in orders:
+            client.cancel_order(symbol = self.pair, orderId = order['orderId'])
 
-    def limit_sell(self, amt, pt):
-        try:
-            logging.warning("Trying to sell {} {} for {} {}. (price: {})".format(amt, self.asset, round(amt * pt, self.pt_dec), self.base, pt))
-            self.last_order = {"type": "sell", "amt": amt, "pt": pt}
-            client.order_limit_sell(symbol = self.pair, quantity = amt, price = pt)
-        except Exception as e:
-            logger.error("Error selling. '{}'".format(e))
+    def update_vars(self):
+        logger.debug("~~ update_vars ~~")
+        self.ticks += 1
+        self.days = (self.ticks - 1) * self.interval / (60 * 24)
+
+        data = client.get_symbol_info(self.pair)['filters']
+        min_order = float(data[2]['minQty']) * self.candles[-1]['close']
+        self.min_order = 3 * max(min_order, float(data[3]['minNotional']))
+        amt_dec = 8
+        for char in reversed(data[2]['stepSize']):
+            if char == "0": amt_dec -= 1
+            else: break
+        self.amt_dec = amt_dec
+        pt_dec = 8
+        for char in reversed(data[0]['tickSize']):
+            if char == "0": pt_dec -= 1
+            else: break
+        self.pt_dec = pt_dec
+
+    def get_params(self):
+        logger.debug("~~ get_params ~~")
+        # import config.txt
+        params = dict()
+        with open("config.txt") as cfg:
+            par = [l.split()[0] for l in cfg.read().split("\n")[2:-1]]
+            for p in par:
+                p = p.split("=")
+                if len(p) != 2: continue
+                params[str(p[0])] = str(p[1])
+
+        # check values
+        funds = float(params['funds'])
+        if funds < 0:
+            logger.warning("Warning! Maximum amount to invest should be greater than zero.")
+            params['funds'] = "0"
+
+        logs_per_day = float(params['logs_per_day'])
+        if logs_per_day < 0:
+            logger.warning("Warning! Logs per day should be zero or greater.")
+            params['logs_per_day'] = "1"
+
+        # check for additions and removals
+        if self.ticks == 0: self.params = dict()
+
+        keys_old = {key for key in self.params}
+        keys_new = {key for key in params}
+
+        keys_added = {key for key in keys_new if key not in keys_old}
+        keys_removed = {key for key in keys_old if key not in keys_new}
+
+        if len(keys_added) > 0:
+            logger.info("{} parameter(s) added.".format(len(keys_added)))
+            for key in keys_added: logger.info("    ~ {} {}".format(key, params[key]))
+        if len(keys_removed) > 0:
+            logger.info("{} parameter(s) removed.".format(len(keys_removed)))
+            for key in keys_removed: logger.info("    ~ " + key)
+
+        # check for changes
+        keys_remaining = {key for key in keys_old if key in keys_new}
+        keys_changed = set()
+
+        for key in keys_remaining:
+            if params[key] != self.params[key]: keys_changed.add(key)
+
+        if self.ticks == 0: keys_changed.add('funds'); keys_changed.add('logs_per_day')
+
+        if "funds" in keys_changed:
+            if params['funds'] == 0: logger.info("No maximum investment amount specified.")
+            else: logger.info("Maximum investment amount set to {} {}.".format(params['funds'], self.base))
+            self.params['funds'] = params['funds']
+            keys_changed.remove('funds')
+        if "logs_per_day" in keys_changed:
+            if params['logs_per_day'] == 0: logger.info("Log updates turned off.")
+            elif params['logs_per_day'] == 1: logger.info("Logs updating once per day.")
+            else: logger.info("Logs updating {} times per day".format(params['logs_per_day']))
+            self.params['logs_per_day'] = params['logs_per_day']
+            keys_changed.remove('logs_per_day')
+
+        if len(keys_changed) > 0:
+            logger.info("{} parameter(s) changed.".format(len(keys_changed)))
+            for key in keys_changed:
+                logger.info("    ~ {} {} {}".format(key, self.params[key], params[key]))
+                self.params[key] = params[key]
+
+    def get_new_candle(self):
+        logger.debug("~~ get_new_candle ~~")
+        candle_new = dict()
+        for i in range(self.interval):
+            candle_raw = self.candles_raw[-1 - i]
+
+            if i == 0:
+                candle_new = candle_raw
+                continue
+
+            if candle_raw["high"] > candle_new["high"]:
+                candle_new["high"] = candle_raw["high"]
+            if candle_raw["low"] < candle_new["low"]:
+                candle_new["low"] = candle_raw["low"]
+            candle_new["volume"] += candle_raw["volume"]
+
+            if i == self.interval - 1:
+                candle_new["open"] = candle_raw["open"]
+                candle_new["ts_start"] = candle_raw["ts_start"]
+                self.candles.append(candle_new)
+                self.candles_raw_unused = 0
+                self.candles = self.shrink_list(self.candles, 5000)
+
+    def get_positions(self) -> dict:
+        """ Get balances and check dwts """
+        logger.debug("~~ get_positions ~~")
+        positions = {"asset": [self.asset, 0], "base": [self.base, 0]}
+        data = client.get_account()["balances"]
+        for i in range(len(data)):
+            asset = data[i]["asset"]
+            if asset not in {self.asset, self.base}: continue
+            free = float(data[i]["free"])
+            locked = float(data[i]["locked"])
+            total = free + locked
+            if asset == self.asset: positions['asset'][1] = total
+            if asset == self.base: positions['base'][1] = total
+
+        if self.ticks == 0:
+            ts = round(1000 * time.time())
+            self.earliest_pending = ts
+
+        return positions
+
+    def update_f(self, p, apc):
+        if apc == 0:
+            if self.ticks != 1: return
+            apc = p.price
+        r = self.performance
+        s = self.signal
+        pos_f = self.positions_f
+        pos_t = self.positions_t
+
+        size = p.base + apc * p.asset
+        rin = apc * p.asset / size
+        sizeT = p.funds * (1 - s['rinTargetLast']) + apc * p.asset
+        rinT = apc * p.asset / sizeT
+
+        if self.ticks > 1:
+            logger.debug("update fake portfolios")
+            size_f = pos_f['base'][1] + apc * pos_f['asset'][1]
+            size_t = pos_t['base'][1] + apc * pos_t['asset'][1]
+            if s['rinTarget'] == 0 and p.positionValue < self.min_order:
+                profit = size_t - 1
+                if profit >= 0: r['wSum'] += profit; r['W'] += 1; self.trades += 1
+                if profit < 0: r['lSum'] += profit; r['L'] += 1; self.trades += 1
+                if r['W'] != 0: r['w'] = r['wSum'] / r['W']
+                if r['L'] != 0: r['l'] = r['lSum'] / r['L']
+                size_t = 1
+        else:
+            logger.debug("init fake portfolios")
+            size_f = 1; size_t = 1
+
+        base_f = (1 - rin) * size_f; base_t = (1 - rinT) * size_t
+        asset_f = (rin / apc) * size_f; asset_t = (rinT / apc) * size_t
+
+        pos_f['base'][1] = base_f; pos_t['base'][1] = base_t
+        pos_f['asset'][1] = asset_f; pos_t['asset'][1] = asset_t
 
     def get_dws(self):
         diffasset_dw = 0; diffbase_dw = 0
@@ -432,132 +571,6 @@ class Instance:
 
         return
 
-    def get_positions(self) -> dict:
-        """ Get balances and check dwts """
-        logger.debug("~~ get_positions ~~")
-        positions = {"asset": [self.asset, 0], "base": [self.base, 0]}
-        data = client.get_account()["balances"]
-        for i in range(len(data)):
-            asset = data[i]["asset"]
-            if asset not in {self.asset, self.base}: continue
-            free = float(data[i]["free"])
-            locked = float(data[i]["locked"])
-            total = free + locked
-            if asset == self.asset: positions['asset'][1] = total
-            if asset == self.base: positions['base'][1] = total
-
-        if self.ticks == 0:
-            ts = round(1000 * time.time())
-            self.earliest_pending = ts
-
-        return positions
-
-    def get_params(self):
-        logger.debug("~~ get_params ~~")
-        # import config.txt
-        params = dict()
-        with open("config.txt") as cfg:
-            par = [l.split()[0] for l in cfg.read().split("\n")[2:-1]]
-            for p in par:
-                p = p.split("=")
-                if len(p) != 2: continue
-                params[str(p[0])] = str(p[1])
-
-        # check values
-        funds = float(params['funds'])
-        if funds < 0:
-            logger.warning("Warning! Maximum amount to invest should be greater than zero.")
-            params['funds'] = "0"
-
-        logs_per_day = float(params['logs_per_day'])
-        if logs_per_day < 0:
-            logger.warning("Warning! Logs per day should be zero or greater.")
-            params['logs_per_day'] = "1"
-
-        # check for additions and removals
-        if self.ticks == 0: self.params = dict()
-
-        keys_old = {key for key in self.params}
-        keys_new = {key for key in params}
-
-        keys_added = {key for key in keys_new if key not in keys_old}
-        keys_removed = {key for key in keys_old if key not in keys_new}
-
-        if len(keys_added) > 0:
-            logger.info("{} parameter(s) added.".format(len(keys_added)))
-            for key in keys_added: logger.info("    ~ {} {}".format(key, params[key]))
-        if len(keys_removed) > 0:
-            logger.info("{} parameter(s) removed.".format(len(keys_removed)))
-            for key in keys_removed: logger.info("    ~ " + key)
-
-        # check for changes
-        keys_remaining = {key for key in keys_old if key in keys_new}
-        keys_changed = set()
-
-        for key in keys_remaining:
-            if params[key] != self.params[key]: keys_changed.add(key)
-
-        if self.ticks == 0: keys_changed.add('funds'); keys_changed.add('logs_per_day')
-
-        if "funds" in keys_changed:
-            if params['funds'] == 0: logger.info("No maximum investment amount specified.")
-            else: logger.info("Maximum investment amount set to {} {}.".format(params['funds'], self.base))
-            self.params['funds'] = params['funds']
-            keys_changed.remove('funds')
-        if "logs_per_day" in keys_changed:
-            if params['logs_per_day'] == 0: logger.info("Log updates turned off.")
-            elif params['logs_per_day'] == 1: logger.info("Logs updating once per day.")
-            else: logger.info("Logs updating {} times per day".format(params['logs_per_day']))
-            self.params['logs_per_day'] = params['logs_per_day']
-            keys_changed.remove('logs_per_day')
-
-        if len(keys_changed) > 0:
-            logger.info("{} parameter(s) changed.".format(len(keys_changed)))
-            for key in keys_changed:
-                logger.info("    ~ {} {} {}".format(key, self.params[key], params[key]))
-                self.params[key] = params[key]
-
-    def close_orders(self):
-        logger.debug("~~ close_orders ~~")
-        orders = client.get_open_orders(symbol = self.pair)
-        for order in orders:
-            client.cancel_order(symbol = self.pair, orderId = order['orderId'])
-
-    def update_f(self, p, apc):
-        if apc == 0:
-            if self.ticks != 1: return
-            apc = p.price
-        r = self.performance
-        s = self.signal
-        pos_f = self.positions_f
-        pos_t = self.positions_t
-
-        size = p.base + apc * p.asset
-        rin = apc * p.asset / size
-        sizeT = p.funds * (1 - s['rinTargetLast']) + apc * p.asset
-        rinT = apc * p.asset / sizeT
-
-        if self.ticks > 1:
-            logger.debug("update fake portfolios")
-            size_f = pos_f['base'][1] + apc * pos_f['asset'][1]
-            size_t = pos_t['base'][1] + apc * pos_t['asset'][1]
-            if s['rinTarget'] == 0 and p.positionValue < self.min_order:
-                profit = size_t - 1
-                if profit >= 0: r['wSum'] += profit; r['W'] += 1; self.trades += 1
-                if profit < 0: r['lSum'] += profit; r['L'] += 1; self.trades += 1
-                if r['W'] != 0: r['w'] = r['wSum'] / r['W']
-                if r['L'] != 0: r['l'] = r['lSum'] / r['L']
-                size_t = 1
-        else:
-            logger.debug("init fake portfolios")
-            size_f = 1; size_t = 1
-
-        base_f = (1 - rin) * size_f; base_t = (1 - rinT) * size_t
-        asset_f = (rin / apc) * size_f; asset_t = (rinT / apc) * size_t
-
-        pos_f['base'][1] = base_f; pos_t['base'][1] = base_t
-        pos_f['asset'][1] = asset_f; pos_t['asset'][1] = asset_t
-
     def get_performance(self, p):
         logger.debug("~~ get_performance ~~")
         if self.ticks == 1:
@@ -628,47 +641,34 @@ class Instance:
         logger.info("Bot profits: {}".format(botprof))
         logger.info("Buy and hold: {}%".format(round(100 * r['bh'], 2)))
 
-    def get_new_candle(self):
-        logger.debug("~~ get_new_candle ~~")
-        candle_new = dict()
-        for i in range(self.interval):
-            candle_raw = self.candles_raw[-1 - i]
+    def init(self, p):
+        logger.debug("~~ init ~~")
+        self.bot_name = "Binance Pybot"
+        self.version = "1.0"
+        logger.info("Analyzing the market...")
+        # get randomization
+        # no randomization yet
+        logger.info("Ready to start trading...")
 
-            if i == 0:
-                candle_new = candle_raw
-                continue
+    def strat(self, p):
+        """ strategy / trading algorithm
+        - Use talib for indicators
+        - Talib objects require numpy.array objects as input
+        - rinTarget stands for 'ratio invested target'
+        - Set s['rinTarget'] between 0 and 1. 0 is 0%, 1 is 100% invested
+        """
+        logger.debug("~~ trading strategy ~~")
+        s = self.signal
 
-            if candle_raw["high"] > candle_new["high"]:
-                candle_new["high"] = candle_raw["high"]
-            if candle_raw["low"] < candle_new["low"]:
-                candle_new["low"] = candle_raw["low"]
-            candle_new["volume"] += candle_raw["volume"]
+        close_data = numpy.array([c['close'] for c in self.candles])
+        mas = round(talib.SMA(close_data, timeperiod = 20)[-1], 8)
+        mal = round(talib.SMA(close_data, timeperiod = 100)[-1], 8)
 
-            if i == self.interval - 1:
-                candle_new["open"] = candle_raw["open"]
-                candle_new["ts_start"] = candle_raw["ts_start"]
-                self.candles.append(candle_new)
-                self.candles_raw_unused = 0
-                self.candles = self.shrink_list(self.candles, 5000)
+        logger.debug("20 SMA: " + str(mas))
+        logger.debug("100 SMA: " + str(mal))
 
-    def update_vars(self):
-        logger.debug("~~ update_vars ~~")
-        self.ticks += 1
-        self.days = (self.ticks - 1) * self.interval / (60 * 24)
-
-        data = client.get_symbol_info(self.pair)['filters']
-        min_order = float(data[2]['minQty']) * self.candles[-1]['close']
-        self.min_order = 3 * max(min_order, float(data[3]['minNotional']))
-        amt_dec = 8
-        for char in reversed(data[2]['stepSize']):
-            if char == "0": amt_dec -= 1
-            else: break
-        self.amt_dec = amt_dec
-        pt_dec = 8
-        for char in reversed(data[0]['tickSize']):
-            if char == "0": pt_dec -= 1
-            else: break
-        self.pt_dec = pt_dec
+        s['rinTarget'] = 1
+        if mas > mal: s['rinTarget'] = 0
 
     def ping(self):
         """ Check for and handle a new candle """
