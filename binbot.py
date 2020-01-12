@@ -4,6 +4,7 @@ Binance Trading Bot
 
 from binance.client import Client
 from datetime import datetime
+import random
 import os
 import logging
 import time
@@ -364,7 +365,8 @@ class Instance:
         if diffasset_trad != 0: apc = -diffbase_trad / diffasset_trad
         if l['amt'] != 0: rTrade = abs(diffasset_trad / l['amt'])
         if diffasset_trad > 0:
-            logger.info("Buy detected")
+            log_amt = "{} {}".format(round(diffasset_trad, 8), self.asset)
+            log_size = "{} {}".format(round(diffasset_trad * apc, 8), self.base)
             logger.debug("diffasset_trad " + str(diffasset_trad) + " l['amt'] " + str(l['amt']))
             logger.debug("rTrade " + str(rTrade))
             if l['type'] != "buy":
@@ -372,8 +374,10 @@ class Instance:
                 rTrade = 0
             elif abs(rTrade - 1) > 0.1:
                 logger.info("Buy order partially filled.")
+            logger.info("{} bought for {}.".format(log_amt, log_size))
         elif diffasset_trad < 0:
-            logger.info("Sell detected")
+            log_amt = "{} {}".format(round(-diffasset_trad, 8), self.asset)
+            log_size = "{} {}".format(round(-diffasset_trad * apc, 8), self.base)
             logger.debug("diffasset_trad " + str(diffasset_trad) + " l['amt'] " + str(l['amt']))
             logger.debug("rTrade " + str(rTrade))
             if l['type'] != "sell":
@@ -381,6 +385,7 @@ class Instance:
                 rTrade = 0
             elif abs(rTrade - 1) > 0.1:
                 logger.info("Sell order partially filled.")
+            logger.info("{} sold for {}.".format(log_amt, log_size))
         s['rinTargetLast'] += rTrade * rbuy
         self.update_f(p, apc)
 
@@ -596,9 +601,10 @@ class Instance:
         logger.debug("Positions: " + str(self.positions))
         r = self.performance
 
-        hr = 6 * "#####"
+        hr = "#######"
         tpd = float()
         if self.days != 0: tpd = self.trades / self.days
+        header = "{} {} {} {} {}".format(self.bot_name, self.version, hr, self.exchange.title(), self.pair)
         trades = "{} trades ({} per day)".format(int(self.trades), round(tpd, 2))
         currency = "{} {}".format(round(p.base, 8), self.base)
         price = "{} {}/{}".format(round(p.price, 8), self.base, self.asset)
@@ -610,7 +616,7 @@ class Instance:
         botprof = "{}% {},".format(round(100 * r['bProfits'], 2), self.base)
         botprof += " {}% {}".format(round(100 * ((1 + r['bProfits']) / (1 + r['bh'])) - 100, 2), self.asset)
 
-        logger.info("{} {} {} {}".format(hr, self.exchange.title(), self.pair, hr))
+        logger.info("{} {} {}".format(2 * hr, header, 2 * hr))
         logger.info("Days since start: {} | Trades: {}".format(round(self.days, 2), trades))
         logger.info("Currency: {} | Current price: {}".format(currency, price))
         logger.info("Assets: {} | Value of assets: {}".format(assets, assetvalue))
