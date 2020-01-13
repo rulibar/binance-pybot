@@ -34,6 +34,7 @@ def set_log_file():
     logger.handlers = [fileh]
 
 logging.basicConfig(level = logging.INFO)
+logging.Formatter.converter = time.gmtime
 logger = logging.getLogger()
 set_log_file()
 logger.debug(50 * "#" + " binbot.py " + 50 * "#")
@@ -88,7 +89,7 @@ class Instance:
         self.performance = {"bh": 0, "change": 0, "W": 0, "L": 0, "wSum": 0, "lSum": 0, "w": 0, "l": 0, "be": 0, "aProfits": 0, "bProfits": 0, "cProfits": 0}
         self.init(p)
 
-    def _get_candles_raw(self) -> list:
+    def _get_candles_raw(self):
         """ Get enough 1m data to compile 600 historical candles """
         logger.debug("~~ _get_candles_raw ~~")
         data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(600 * self.interval))
@@ -96,19 +97,15 @@ class Instance:
         for i in range(len(data)): data[i] = self.get_candle(data[i])
         return data
 
-    def _get_candles(self) -> list:
+    def _get_candles(self):
         logger.debug("~~ _get_candles ~~")
-        # Compile the 1m candles_raw into 30m candles
         candles = list()
         candle_new = dict()
         for i in range(len(self.candles_raw)):
-            order = (i + 1) % self.interval
-            # [1, 2, ..., interval - 1, 0, 1, 2, ...]
+            order = i % self.interval
             candle_raw = self.candles_raw[- 1 - i]
-            # Going backwards through candles_raw to have control over how long
-            # until next candle
 
-            if order == 1:
+            if order == 0:
                 candle_new = candle_raw
                 continue
 
@@ -118,17 +115,15 @@ class Instance:
                 candle_new["low"] = candle_raw["low"]
             candle_new["volume"] += candle_raw["volume"]
 
-            if order == 0:
+            if order == self.interval - 1:
                 candle_new["open"] = candle_raw["open"]
                 candle_new["ts_start"] = candle_raw["ts_start"]
                 candles.append(candle_new)
 
         return candles[::-1]
 
-    def _get_raw_unused(self) -> int:
+    def _get_raw_unused(self):
         logger.debug("~~ _get_raw_unused ~~")
-        # Update candles_raw with recent 1m candles
-        # Return how many 1m candles were imported
         raw_unused = -1
         str_out = str()
         data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2 * self.interval))
@@ -148,8 +143,7 @@ class Instance:
         logger.debug("{} current 1m candles.\n{}".format(raw_unused, str_out[:-1]))
         return raw_unused
 
-    def get_historical_candles_method(self, symbol, interval, start_str) -> list:
-        # Get historical candles without connection problems breaking the program
+    def get_historical_candles_method(self, symbol, interval, start_str):
         while True:
             try:
                 data = client.get_historical_klines(symbol, interval, start_str)
@@ -164,7 +158,7 @@ class Instance:
         if len(list_in) > size: return list_in[-size:]
         return list_in
 
-    def get_candle(self, data) -> dict:
+    def get_candle(self, data):
         # data is a kline list from Binance
         candle = {
             "ts_start": int(data[0]),
@@ -194,7 +188,6 @@ class Instance:
             logger.error("Error selling. '{}'".format(e))
 
     def bso(self, p):
-        """ buy/sell/other """
         logger.debug("~~ buy/sell/other ~~")
         s = self.signal
         logger.debug("s['rinTarget']: {} s['rinTargetLast']: {}".format(s['rinTarget'], s['rinTargetLast']))
@@ -250,7 +243,6 @@ class Instance:
 
     def get_params(self):
         logger.debug("~~ get_params ~~")
-        # import config.txt
         params = dict()
         with open("config.txt") as cfg:
             par = [l.split()[0] for l in cfg.read().split("\n")[2:-1]]
@@ -317,7 +309,7 @@ class Instance:
         logger.debug("~~ get_new_candle ~~")
         candle_new = dict()
         for i in range(self.interval):
-            candle_raw = self.candles_raw[-1 - i]
+            candle_raw = self.candles_raw[- 1 - i]
 
             if i == 0:
                 candle_new = candle_raw
@@ -337,7 +329,6 @@ class Instance:
                 self.candles = self.shrink_list(self.candles, 5000)
 
     def get_positions(self) -> dict:
-        """ Get balances and check dwts """
         logger.debug("~~ get_positions ~~")
         positions = {"asset": [self.asset, 0], "base": [self.base, 0]}
         data = client.get_account()["balances"]
@@ -397,10 +388,10 @@ class Instance:
         ts_pending = self.earliest_pending
         start_time = ts_pending - 1000
         if self.ticks == 1: start_time = ts_pending - 1000 * 60 * 60 * 24 * 7
+
         # get dws
         deposits = client.get_deposit_history(startTime = start_time)['depositList']
         withdrawals = client.get_withdraw_history(startTime = start_time)['withdrawList']
-        # filter for asset
         deposits = [d for d in deposits if d['asset'] in {self.asset, self.base}]
         withdrawals = [w for w in withdrawals if w['asset'] in {self.asset, self.base}]
 
@@ -486,9 +477,10 @@ class Instance:
         ts_last = self.candles[-2]['ts_end']
         l = self.last_order
         s = self.signal
-        # Get trades
         limit = int(ts_last)
         if self.ticks == 1: limit = self.positions_init_ts
+
+        # Get trades
         trades = reversed(client.get_my_trades(symbol = self.pair, limit = 20))
         trades = [t for t in trades if t['time'] > limit]
 
@@ -538,7 +530,6 @@ class Instance:
     def get_dwts(self, p):
         logger.debug("~~ get_dwts ~~")
         s = self.signal
-
         diffasset = round(self.positions['asset'][1] - self.positions_last['asset'][1], 8)
         diffbase = round(self.positions['base'][1] - self.positions_last['base'][1], 8)
 
@@ -558,7 +549,6 @@ class Instance:
         if diffbase_unkn > 0: logger.info("{} {} has become available.".format(round(diffbase_unkn, 8), self.base))
         elif diffbase_unkn < 0: logger.info("{} {} has become unavailable.".format(round(-diffbase_unkn, 8), self.base))
 
-        # log outputs
         logger.debug("diffasset " + str(diffasset))
         logger.debug("diffasset_expt " + str(diffasset_expt))
         logger.debug("diffasset_unkn " + str(diffasset_unkn))
@@ -676,11 +666,12 @@ class Instance:
         if mas > mal: s['rinTarget'] = 1
 
     def ping(self):
-        """ Check for and handle a new candle """
+        # check if it's time for a new candle
         if (1000 * time.time() - self.candles_raw[-1]["ts_end"]) < 60000: return
         logger.debug("~~ ping ~~")
         data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2))
         data_top = self.get_candle(data[0])
+
         # New raw candle?
         if data_top["ts_end"] != self.candles_raw[-1]["ts_end"]:
             self.candles_raw_unused += 1
@@ -689,17 +680,15 @@ class Instance:
 
         # New candle?
         if self.candles_raw_unused == self.interval:
-            # init log
             logger.debug(40 * "#" + " tick " + 40 * "#")
-            set_log_file()
 
-            # close orders, get preliminary vars, params, and new candle
+            # Preliminary setup
+            set_log_file()
             self.close_orders()
             self.update_vars()
             self.get_params()
             self.get_new_candle()
 
-            # get portfolio and performance
             self.positions_last = dict(self.positions)
             self.positions = self.get_positions()
             p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
