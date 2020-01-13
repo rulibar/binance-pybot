@@ -78,6 +78,7 @@ class Instance:
 
         self.candle_start = None
         self.positions_start = None
+        self.positions_init_ts = 0
         self.positions = self.get_positions()
         self.positions_f = dict(self.positions)
         self.positions_t = dict(self.positions)
@@ -142,7 +143,7 @@ class Instance:
 
             if raw_unused > 0:
                 self.candles_raw.append(candle_raw)
-                str_out += "    ~ {}\n".format(candle_raw)
+                str_out += "    {}\n".format(candle_raw)
 
         logger.debug("{} current 1m candles.\n{}".format(raw_unused, str_out[:-1]))
         return raw_unused
@@ -280,10 +281,10 @@ class Instance:
 
         if len(keys_added) > 0:
             logger.info("{} parameter(s) added.".format(len(keys_added)))
-            for key in keys_added: logger.info("    ~ {} {}".format(key, params[key]))
+            for key in keys_added: logger.info("    \"{}\": {}".format(key, params[key]))
         if len(keys_removed) > 0:
             logger.info("{} parameter(s) removed.".format(len(keys_removed)))
-            for key in keys_removed: logger.info("    ~ " + key)
+            for key in keys_removed: logger.info("    \"{}\"".format(key))
 
         # check for changes
         keys_remaining = {key for key in keys_old if key in keys_new}
@@ -309,7 +310,7 @@ class Instance:
         if len(keys_changed) > 0:
             logger.info("{} parameter(s) changed.".format(len(keys_changed)))
             for key in keys_changed:
-                logger.info("    ~ {} {} {}".format(key, self.params[key], params[key]))
+                logger.info("    \"{}\": {} -> {}".format(key, self.params[key], params[key]))
                 self.params[key] = params[key]
 
     def get_new_candle(self):
@@ -350,8 +351,8 @@ class Instance:
             if asset == self.base: positions['base'][1] = total
 
         if self.ticks == 0:
-            ts = round(1000 * time.time())
-            self.earliest_pending = ts
+            self.positions_init_ts = int(1000 * time.time())
+            self.earliest_pending = int(self.positions_init_ts)
 
         return positions
 
@@ -393,9 +394,9 @@ class Instance:
     def get_dws(self):
         diffasset_dw = 0; diffbase_dw = 0
         ts_last = self.candles[-2]['ts_end']
-        ts = self.earliest_pending
-        start_time = ts - 1000
-        if self.ticks == 1: start_time = ts - 1000 * 60 * 60 * 24 * 7
+        ts_pending = self.earliest_pending
+        start_time = ts_pending - 1000
+        if self.ticks == 1: start_time = ts_pending - 1000 * 60 * 60 * 24 * 7
         # get dws
         deposits = client.get_deposit_history(startTime = start_time)['depositList']
         withdrawals = client.get_withdraw_history(startTime = start_time)['withdrawList']
@@ -413,14 +414,14 @@ class Instance:
                 id = deposit['txId']
                 self.deposits[id] = deposit
                 self.deposits_pending.add(id)
-                if deposit['insertTime'] < self.earliest_pending:
-                    self.earliest_pending = deposit['insertTime']
+                if deposit['insertTime'] < ts_pending:
+                    ts_pending = deposit['insertTime']
             for withdrawal in withdrawals:
                 id = withdrawal['id']
                 self.withdrawals[id] = withdrawal
                 self.withdrawals_pending.add(id)
-                if withdrawal['applyTime'] < self.earliest_pending:
-                    self.earliest_pending = withdrawal['applyTime']
+                if withdrawal['applyTime'] < ts_pending:
+                    ts_pending = withdrawal['applyTime']
         else:
             # check if pending dws have been completed then process them
             for deposit in deposits:
@@ -468,13 +469,15 @@ class Instance:
                     if withdrawal['asset'] == self.base: diffbase_dw -= amt
                     else: diffasset_dw -= amt
 
-        logger.debug("self.deposits:")
-        for id in self.deposits: logger.debug("    ~ " + id + ": " + str(self.deposits[id]))
+        if len(self.deposits) > 0:
+            logger.debug("self.deposits:")
+            for id in self.deposits: logger.debug("    \"{}\": {}".format(id, self.deposits[id]))
         logger.debug("self.deposits_pending: " + str(self.deposits_pending))
-        logger.debug("self.withdrawals:")
-        for id in self.withdrawals: logger.debug("    ~ " + id + ": " + str(self.withdrawals[id]))
+        if len(self.withdrawals) > 0:
+            logger.debug("self.withdrawals:")
+            for id in self.withdrawals: logger.debug("    \"{}\": {}".format(id, self.withdrawals[id]))
         logger.debug("self.withdrawals_pending: " + str(self.withdrawals_pending))
-        logger.debug("self.earliest_pending: " + str(self.earliest_pending))
+        logger.debug("self.earliest_pending: " + str(ts_pending))
 
         return diffasset_dw, diffbase_dw
 
@@ -484,14 +487,16 @@ class Instance:
         l = self.last_order
         s = self.signal
         # Get trades
+        limit = int(ts_last)
+        if self.ticks == 1: limit = self.positions_init_ts
         trades = reversed(client.get_my_trades(symbol = self.pair, limit = 20))
-        trades = [t for t in trades if t['time'] > ts_last]
+        trades = [t for t in trades if t['time'] > limit]
 
         # process trades
         if len(trades) > 0:
             logger.debug("{} new trade(s) found.".format(len(trades)))
             for trade in trades:
-                logger.debug("    ~ " + str(trade))
+                logger.debug("    " + str(trade))
                 qty = float(trade['qty'])
                 price = float(trade['price'])
                 if not trade['isBuyer']: qty *= -1
@@ -634,10 +639,10 @@ class Instance:
         logger.info("Currency: {} | Current price: {}".format(currency, price))
         logger.info("Assets: {} | Value of assets: {}".format(assets, assetvalue))
         logger.info("Value of account: {}".format(accountvalue))
-        logger.info("Wins: {} | Average win: {}%".format(r['W'], round(100 * r['w'], 2)))
-        logger.info("Losses: {} | Average loss: {}%".format(r['L'], round(100 * r['l'], 2)))
-        logger.info("Current profits: {}%".format(round(100 * r['cProfits'], 2)))
-        logger.info("Bot efficiency: {}".format(boteff))
+        logger.info("    Wins: {} | Average win: {}%".format(r['W'], round(100 * r['w'], 2)))
+        logger.info("    Losses: {} | Average loss: {}%".format(r['L'], round(100 * r['l'], 2)))
+        logger.info("    Current profits: {}%".format(round(100 * r['cProfits'], 2)))
+        logger.info("    Bot efficiency: {}".format(boteff))
         logger.info("Bot profits: {}".format(botprof))
         logger.info("Buy and hold: {}%".format(round(100 * r['bh'], 2)))
 
