@@ -44,3 +44,16 @@ To do list:
 - Program a decent strategy
 - Run a bunch of tests
 - Finalize initial version
+
+1-12
+I've programmed the log output, programmed a decent strategy (saved local), and
+ran some tests. There's still going to be a lot of work to do though.
+
+So what I'm going to do is release something soon as 0.1.
+Then I'll make updates to it like 0.1.x and 0.x.x.
+Once the bot is stable, reliable, efficient, etc, then I can release version 1.0.
+Version 1.x should be a long term version that I'm using on the majority of my
+aws bots. I'll only be using 1.x.x on a few aws bots for testing and updating.
+
+This is mostly working so I plan to slow down work soon and focus more on
+testing and incremental progress.
