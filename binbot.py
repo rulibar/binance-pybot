@@ -172,7 +172,7 @@ class Instance:
         try:
             logging.warning("Trying to buy {} {} for {} {}. (price: {})".format(amt, self.asset, round(amt * pt, self.pt_dec), self.base, pt))
             self.last_order = {"type": "buy", "amt": amt, "pt": pt}
-            client.order_limit_buy(symbol = self.pair, quantity = amt, price = pt)
+            client.order_limit_buy(symbol = self.pair, quantity = "{:.8f}".format(amt), price = "{:.8f}".format(pt))
         except Exception as e:
             logger.error("Error buying. '{}'".format(e))
 
@@ -180,7 +180,7 @@ class Instance:
         try:
             logging.warning("Trying to sell {} {} for {} {}. (price: {})".format(amt, self.asset, round(amt * pt, self.pt_dec), self.base, pt))
             self.last_order = {"type": "sell", "amt": amt, "pt": pt}
-            client.order_limit_sell(symbol = self.pair, quantity = amt, price = pt)
+            client.order_limit_sell(symbol = self.pair, quantity = "{:.8f}".format(amt), price = "{:.8f}".format(pt))
         except Exception as e:
             logger.error("Error selling. '{}'".format(e))
 
