@@ -1,9 +1,9 @@
 """
-Binance Trading Bot
+Binance Pybot
+https://github.com/rulibar/binance-pybot
 """
 
 from binance.client import Client
-from datetime import datetime
 import random
 import os
 import logging
@@ -37,7 +37,7 @@ logging.basicConfig(level = logging.INFO)
 logging.Formatter.converter = time.gmtime
 logger = logging.getLogger()
 set_log_file()
-logger.debug(25 * "==" + " binbot.py " + 25 * "==")
+logger.debug(25 * "==" + " New Logger " + 25 * "==")
 
 class Portfolio:
     def __init__(self, candle, positions, funds):
@@ -259,6 +259,11 @@ class Instance:
             logger.warning("Warning! Logs per day should be zero or greater.")
             params['logs_per_day'] = "1"
 
+        log_dws = str(params['log_dws'])
+        if log_dws not in {"yes", "no"}:
+            logger.warning("Warning! Log deposits and withdrawals set to 'yes'.")
+            params['log_dws'] = "yes"
+
         # check for additions and removals
         if self.ticks == 0: self.params = dict()
 
@@ -282,7 +287,8 @@ class Instance:
         for key in keys_remaining:
             if params[key] != self.params[key]: keys_changed.add(key)
 
-        if self.ticks == 0: keys_changed.add('funds'); keys_changed.add('logs_per_day')
+        if self.ticks == 0:
+            keys_changed.add('funds'); keys_changed.add('logs_per_day'); keys_changed.add('log_dws')
 
         if "funds" in keys_changed:
             if params['funds'] == 0: logger.info("No maximum investment amount specified.")
@@ -295,6 +301,11 @@ class Instance:
             else: logger.info("Logs updating {} times per day".format(params['logs_per_day']))
             self.params['logs_per_day'] = params['logs_per_day']
             keys_changed.remove('logs_per_day')
+        if "log_dws" in keys_changed:
+            if params['log_dws'] == "yes": logger.info("Deposit and withdrawal logs enabled.")
+            else: logger.info("Deposit and withdrawal logs disabled.")
+            self.params['log_dws'] = params['log_dws']
+            keys_changed.remove('log_dws')
 
         if len(keys_changed) > 0:
             logger.info("{} parameter(s) changed.".format(len(keys_changed)))
@@ -416,8 +427,10 @@ class Instance:
                 id = deposit['txId']
                 if id in self.deposits_pending:
                     if deposit['status'] > 0:
-                        logger.debug("Deposit processed")
                         amt = deposit['amount']
+                        logger.debug("Deposit processed.")
+                        if self.params['log_dws'] == "yes":
+                            logger.info("Deposit of {} {} detected.".format(amt, deposit['asset']))
                         if deposit['asset'] == self.base: diffbase_dw += amt
                         else: diffasset_dw += amt
                         self.deposits[id] = deposit
@@ -426,8 +439,10 @@ class Instance:
                 id = withdrawal['id']
                 if id in self.withdrawals_pending:
                     if withdrawal['status'] > 3:
-                        logger.debug("Withdrawal processed")
                         amt = withdrawal['amount'] + withdrawal['transactionFee']
+                        logger.debug("Withdrawal processed.")
+                        if self.params['log_dws'] == "yes":
+                            logger.info("Withdrawal of {} {} detected.".format(amt, withdrawal['asset']))
                         if withdrawal['asset'] == self.base: diffbase_dw -= amt
                         else: diffasset_dw -= amt
                         self.withdrawals[id] = withdrawal
@@ -536,10 +551,11 @@ class Instance:
         diffbase_unkn = diffbase - diffbase_expt
 
         # process unknown changes
-        if diffasset_unkn > 0: logger.info("{} {} has become available.".format(round(diffasset_unkn, 8), self.asset))
-        elif diffasset_unkn < 0: logger.info("{} {} has become unavailable.".format(round(-diffasset_unkn, 8), self.asset))
-        if diffbase_unkn > 0: logger.info("{} {} has become available.".format(round(diffbase_unkn, 8), self.base))
-        elif diffbase_unkn < 0: logger.info("{} {} has become unavailable.".format(round(-diffbase_unkn, 8), self.base))
+        if self.params['log_dws'] == "yes":
+            if diffasset_unkn > 0: logger.info("{} {} has become available.".format(round(diffasset_unkn, 8), self.asset))
+            elif diffasset_unkn < 0: logger.info("{} {} has become unavailable.".format(round(-diffasset_unkn, 8), self.asset))
+            if diffbase_unkn > 0: logger.info("{} {} has become available.".format(round(diffbase_unkn, 8), self.base))
+            elif diffbase_unkn < 0: logger.info("{} {} has become unavailable.".format(round(-diffbase_unkn, 8), self.base))
 
         logger.debug("diffasset " + str(diffasset))
         logger.debug("diffasset_expt " + str(diffasset_expt))
