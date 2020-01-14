@@ -71,8 +71,6 @@ class Instance:
         self.candles_raw_unused = self._get_raw_unused()
         logger.debug("Historical candles loaded.")
 
-        self.deposits = dict()
-        self.withdrawals = dict()
         self.deposits_pending = set()
         self.withdrawals_pending = set()
         self.earliest_pending = 0
@@ -397,6 +395,26 @@ class Instance:
         start_time = ts_pending - 1000
         if self.ticks == 1: start_time = ts_pending - 1000 * 60 * 60 * 24 * 7
 
+        def process_d(deposit, id):
+            amt = deposit['amount']
+            logger.debug("Deposit processed. {}".format(deposit))
+            diffasset = 0; diffbase = 0
+            if self.params['log_dws'] == "yes":
+                logger.info("Deposit of {} {} detected.".format(amt, deposit['asset']))
+            if deposit['asset'] == self.base: diffbase += amt
+            else: diffasset += amt
+            return diffasset, diffbase
+
+        def process_w(withdrawal, id):
+            amt = withdrawal['amount'] + withdrawal['transactionFee']
+            logger.debug("Withdrawal processed. {}".format(withdrawal))
+            diffasset = 0; diffbase = 0
+            if self.params['log_dws'] == "yes":
+                logger.info("Withdrawal of {} {} detected.".format(amt, withdrawal['asset']))
+            if withdrawal['asset'] == self.base: diffbase -= amt
+            else: diffasset -= amt
+            return diffasset, diffbase
+
         # get dws
         deposits = client.get_deposit_history(startTime = start_time)['depositList']
         withdrawals = client.get_withdraw_history(startTime = start_time)['withdrawList']
@@ -404,20 +422,16 @@ class Instance:
         withdrawals = [w for w in withdrawals if w['asset'] in {self.asset, self.base}]
 
         if self.ticks == 1:
-            # filter completed orders
+            # Init dws, dws_pending, earliest_pending
             deposits = [d for d in deposits if d['status'] < 1]
             withdrawals = [w for w in withdrawals if w['status'] < 0]
-
-            # Initialize deposits, deposits_pending, withdrawals, withdrawals_pending, earliest_pending
             for deposit in deposits:
                 id = deposit['txId']
-                self.deposits[id] = deposit
                 self.deposits_pending.add(id)
                 if deposit['insertTime'] < ts_pending:
                     ts_pending = deposit['insertTime']
             for withdrawal in withdrawals:
                 id = withdrawal['id']
-                self.withdrawals[id] = withdrawal
                 self.withdrawals_pending.add(id)
                 if withdrawal['applyTime'] < ts_pending:
                     ts_pending = withdrawal['applyTime']
@@ -425,28 +439,20 @@ class Instance:
             # check if pending dws have been completed then process them
             for deposit in deposits:
                 id = deposit['txId']
-                if id in self.deposits_pending:
-                    if deposit['status'] > 0:
-                        amt = deposit['amount']
-                        logger.debug("Deposit processed.")
-                        if self.params['log_dws'] == "yes":
-                            logger.info("Deposit of {} {} detected.".format(amt, deposit['asset']))
-                        if deposit['asset'] == self.base: diffbase_dw += amt
-                        else: diffasset_dw += amt
-                        self.deposits[id] = deposit
-                        self.deposits_pending.remove(id)
+                if id not in self.deposits_pending: continue
+                if deposit['status'] > 0:
+                    diffasset, diffbase = process_d(deposit, id)
+                    diffasset_dw += diffasset
+                    diffbase_dw += diffbase
+                    self.deposits_pending.remove(id)
             for withdrawal in withdrawals:
                 id = withdrawal['id']
-                if id in self.withdrawals_pending:
-                    if withdrawal['status'] > 3:
-                        amt = withdrawal['amount'] + withdrawal['transactionFee']
-                        logger.debug("Withdrawal processed.")
-                        if self.params['log_dws'] == "yes":
-                            logger.info("Withdrawal of {} {} detected.".format(amt, withdrawal['asset']))
-                        if withdrawal['asset'] == self.base: diffbase_dw -= amt
-                        else: diffasset_dw -= amt
-                        self.withdrawals[id] = withdrawal
-                        self.withdrawals_pending.remove(id)
+                if id not in self.withdrawals_pending: continue
+                if withdrawal['status'] > -1:
+                    diffasset, diffbase = process_w(withdrawal, id)
+                    diffasset_dw += diffasset
+                    diffbase_dw += diffbase
+                    self.withdrawals_pending.remove(id)
 
             # check if any dws have been added in the last candle
             deposits = [d for d in deposits if d['insertTime'] > ts_last]
@@ -455,28 +461,22 @@ class Instance:
             # add new dws to pending if pending or process them
             for deposit in deposits:
                 id = deposit['txId']
-                self.deposits[id] = deposit
-                if deposit['status'] < 1: self.deposits_pending.add(id)
-                else:
-                    amt = deposit['amount']
-                    if deposit['asset'] == self.base: diffbase_dw += amt
-                    else: diffasset_dw += amt
+                if deposit['status'] < 1:
+                    self.deposits_pending.add(id)
+                    continue
+                diffasset, diffbase = process_d(deposit, id)
+                diffasset_dw += diffasset
+                diffbase_dw += diffbase
             for withdrawal in withdrawals:
                 id = withdrawal['id']
-                self.withdrawals[id] = withdrawal
-                if withdrawal['status'] < 0: self.withdrawals_pending.add(id)
-                else:
-                    amt = withdrawal['amount'] + withdrawal['transactionFee']
-                    if withdrawal['asset'] == self.base: diffbase_dw -= amt
-                    else: diffasset_dw -= amt
+                if withdrawal['status'] < 0:
+                    self.withdrawals_pending.add(id)
+                    continue
+                diffasset, diffbase = process_w(withdrawal, id)
+                diffasset_dw += diffasset
+                diffbase_dw += diffbase
 
-        if len(self.deposits) > 0:
-            logger.debug("self.deposits:")
-            for id in self.deposits: logger.debug("    \"{}\": {}".format(id, self.deposits[id]))
         logger.debug("self.deposits_pending: " + str(self.deposits_pending))
-        if len(self.withdrawals) > 0:
-            logger.debug("self.withdrawals:")
-            for id in self.withdrawals: logger.debug("    \"{}\": {}".format(id, self.withdrawals[id]))
         logger.debug("self.withdrawals_pending: " + str(self.withdrawals_pending))
         logger.debug("self.earliest_pending: " + str(ts_pending))
 
