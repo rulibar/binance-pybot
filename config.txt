@@ -2,3 +2,4 @@
 # Ignores everything after the first space on each line
 funds=0 # The maximum amount of capital the bot should invest. 0 means no maximum
 logs_per_day=4 # The number of updates outputted to the log every day. 0 means no logs
+log_dws=yes # Output information about deposits and withdrawals to the log? yes/no
