@@ -1,17 +1,17 @@
 """
-Binance Pybot
+Binance Pybot v0.1 (20-01-15)
 https://github.com/rulibar/binance-pybot
 """
 
-from binance.client import Client
-import random
 import os
-import logging
 import time
 import numpy
+import random
+import logging
 import talib
+from binance.client import Client
 
-# get user vars
+# user vars
 api_key = ""
 api_secret = ""
 client = Client(api_key, api_secret)
@@ -39,6 +39,7 @@ logger = logging.getLogger()
 set_log_file()
 logger.debug(25 * "==" + " New Logger " + 25 * "==")
 
+# set up trading bot
 class Portfolio:
     def __init__(self, candle, positions, funds):
         self.ts = candle['ts_end']
@@ -400,7 +401,7 @@ class Instance:
             logger.debug("Deposit processed. {}".format(deposit))
             diffasset = 0; diffbase = 0
             if self.params['log_dws'] == "yes":
-                logger.info("Deposit of {} {} detected.".format(amt, deposit['asset']))
+                logger.warning("Deposit of {} {} detected.".format(amt, deposit['asset']))
             if deposit['asset'] == self.base: diffbase += amt
             else: diffasset += amt
             return diffasset, diffbase
@@ -410,7 +411,7 @@ class Instance:
             logger.debug("Withdrawal processed. {}".format(withdrawal))
             diffasset = 0; diffbase = 0
             if self.params['log_dws'] == "yes":
-                logger.info("Withdrawal of {} {} detected.".format(amt, withdrawal['asset']))
+                logger.warning("Withdrawal of {} {} detected.".format(amt, withdrawal['asset']))
             if withdrawal['asset'] == self.base: diffbase -= amt
             else: diffasset -= amt
             return diffasset, diffbase
@@ -519,7 +520,7 @@ class Instance:
                 rTrade = 0
             elif abs(rTrade - 1) > 0.1:
                 logger.info("Buy order partially filled.")
-            logger.info("{} bought for {}.".format(log_amt, log_size))
+            logger.warning("{} bought for {}.".format(log_amt, log_size))
         elif diffasset_trad < 0:
             log_amt = "{} {}".format(round(-diffasset_trad, 8), self.asset)
             log_size = "{} {}".format(round(-diffasset_trad * apc, 8), self.base)
@@ -528,7 +529,7 @@ class Instance:
                 rTrade = 0
             elif abs(rTrade - 1) > 0.1:
                 logger.info("Sell order partially filled.")
-            logger.info("{} sold for {}.".format(log_amt, log_size))
+            logger.warning("{} sold for {}.".format(log_amt, log_size))
         s['rinTargetLast'] += rTrade * rbuy
         self.update_f(p, apc)
 
@@ -647,7 +648,7 @@ class Instance:
     def init(self, p):
         logger.debug("=== init(): Initialize strategy.")
         self.bot_name = "Binance Pybot"
-        self.version = "1.0"
+        self.version = "0.1"
         logger.info("Analyzing the market...")
         # get randomization
         # no randomization yet
@@ -657,7 +658,7 @@ class Instance:
         """ strategy / trading algorithm
         - Use talib for indicators
         - Talib objects require numpy.array objects as input
-        - rinTarget stands for 'ratio invested target'
+        - s stands for signal, rinTarget stands for 'ratio invested target'
         - Set s['rinTarget'] between 0 and 1. 0 is 0%, 1 is 100% invested
         """
         logger.debug("=== strat(): Trading strategy.")
