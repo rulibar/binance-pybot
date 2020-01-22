@@ -1,4 +1,9 @@
 ======== Recent changes ========
 ==== Beta ====
-v0.1
+v0.1 (20-01-15)
 - First official working version
+
+v0.1.1 (20-01-22)
+- Fixed a bug where bot profits wasn't being properly tracked
+    - Make sure to deep clone positions when creating positions_f and positions_t
+    - Make sure to only call update_f if first candle or trade detected
