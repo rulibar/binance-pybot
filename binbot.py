@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.1 (20-01-15)
+Binance Pybot v0.1.1 (20-01-22)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -80,8 +80,10 @@ class Instance:
         self.positions_start = None
         self.positions_init_ts = 0
         self.positions = self.get_positions()
-        self.positions_f = dict(self.positions)
-        self.positions_t = dict(self.positions)
+        self.positions_f = {'asset': list(self.positions['asset'])}
+        self.positions_f['base'] = list(self.positions['base'])
+        self.positions_t = {'asset': list(self.positions['asset'])}
+        self.positions_t['base'] = list(self.positions['base'])
         p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
         self.last_order = {"type": "none", "amt": 0, "pt": self.candles[-1]['close']}
         self.signal = {"rinTarget": p.rinT, "rinTargetLast": p.rinT, "position": "none", "status": 0, "apc": p.price, "target": p.price, "stop": p.price}
@@ -530,8 +532,10 @@ class Instance:
             elif abs(rTrade - 1) > 0.1:
                 logger.info("Sell order partially filled.")
             logger.warning("{} sold for {}.".format(log_amt, log_size))
-        s['rinTargetLast'] += rTrade * rbuy
-        self.update_f(p, apc)
+
+        if self.ticks == 1 or diffasset_trad != 0:
+            s['rinTargetLast'] += rTrade * rbuy
+            self.update_f(p, apc)
 
         return diffasset_trad, diffbase_trad, apc
 
@@ -648,7 +652,7 @@ class Instance:
     def init(self, p):
         logger.debug("=== init(): Initialize strategy.")
         self.bot_name = "Binance Pybot"
-        self.version = "0.1"
+        self.version = "0.1.1"
         logger.info("Analyzing the market...")
         # get randomization
         # no randomization yet
