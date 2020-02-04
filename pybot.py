@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.1.1 (20-01-22)
+Binance Pybot v0.1.2 (20-02-03)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -605,7 +605,8 @@ class Instance:
         L = int(r['L']); l = float(r['l'])
         if r['cProfits'] >= 0: W += 1; wSum = r['wSum'] + r['cProfits']; w = wSum / W
         if r['cProfits'] < 0: L += 1; lSum = r['lSum'] + r['cProfits']; l = lSum / L
-        r['be'] = (1 + w)**W * (1 + l)**L - 1
+        #r['be'] = (1 + w)**W * (1 + l)**L - 1
+        r['be'] = W * w + L * l
 
         logger.debug("r['bh'] {}%".format(round(100 * r['bh'], 2)))
         logger.debug("r['change'] {}%".format(round(100 * r['change'], 2)))
@@ -652,7 +653,7 @@ class Instance:
     def init(self, p):
         logger.debug("=== init(): Initialize strategy.")
         self.bot_name = "Binance Pybot"
-        self.version = "0.1.1"
+        self.version = "0.1.2"
         logger.info("Analyzing the market...")
         # get randomization
         # no randomization yet
