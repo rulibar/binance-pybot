@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.1.2 (20-02-03)
+Binance Pybot v0.1.3 (20-02-09)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -148,8 +148,8 @@ class Instance:
                 data = client.get_historical_klines(symbol, interval, start_str)
                 break
             except Exception as e:
-                logger.error("Error: '{}'".format(e))
-                logger.error("Sleeping for 2 seconds and then retrying.")
+                logger.error("Error retrieving candle data.\n'{}'".format(e))
+                logger.error("Sleeping for 2 seconds before retrying...")
                 time.sleep(2)
         return data
 
@@ -175,7 +175,7 @@ class Instance:
             self.last_order = {"type": "buy", "amt": amt, "pt": pt}
             client.order_limit_buy(symbol = self.pair, quantity = "{:.8f}".format(amt), price = "{:.8f}".format(pt))
         except Exception as e:
-            logger.error("Error buying. '{}'".format(e))
+            logger.error("Error buying.\n'{}'".format(e))
 
     def limit_sell(self, amt, pt):
         try:
@@ -183,7 +183,7 @@ class Instance:
             self.last_order = {"type": "sell", "amt": amt, "pt": pt}
             client.order_limit_sell(symbol = self.pair, quantity = "{:.8f}".format(amt), price = "{:.8f}".format(pt))
         except Exception as e:
-            logger.error("Error selling. '{}'".format(e))
+            logger.error("Error selling.\n'{}'".format(e))
 
     def bso(self, p):
         logger.debug("=== bso(): buy/sell/other")
@@ -216,16 +216,22 @@ class Instance:
 
     def close_orders(self):
         logger.debug("=== close_orders(): Close open orders.")
-        orders = client.get_open_orders(symbol = self.pair)
-        for order in orders:
-            client.cancel_order(symbol = self.pair, orderId = order['orderId'])
+        try:
+            orders = client.get_open_orders(symbol = self.pair)
+            for order in orders:
+                client.cancel_order(symbol = self.pair, orderId = order['orderId'])
+        except Exception as e:
+            logger.error("Error closing open orders.\n'{}'".format(e))
 
     def update_vars(self):
         logger.debug("=== update_vars(): Update preliminary vars.")
         self.ticks += 1
         self.days = (self.ticks - 1) * self.interval / (60 * 24)
 
-        data = client.get_symbol_info(self.pair)['filters']
+        try: data = client.get_symbol_info(self.pair)['filters']
+        except Exception as e:
+            logger.error("Error getting symbol info.\n'{}'".format(e))
+            return
         min_order = float(data[2]['minQty']) * self.candles[-1]['close']
         self.min_order = 3 * max(min_order, float(data[3]['minNotional']))
         amt_dec = 8
@@ -340,7 +346,10 @@ class Instance:
     def get_positions(self) -> dict:
         logger.debug("=== get_positions(): Get balances.")
         positions = {"asset": [self.asset, 0], "base": [self.base, 0]}
-        data = client.get_account()["balances"]
+        try: data = client.get_account()["balances"]
+        except Exception as e:
+            logger.error("Error getting account balances.\n'{}'".format(e))
+            return
         for i in range(len(data)):
             asset = data[i]["asset"]
             if asset not in {self.asset, self.base}: continue
@@ -419,8 +428,12 @@ class Instance:
             return diffasset, diffbase
 
         # get dws
-        deposits = client.get_deposit_history(startTime = start_time)['depositList']
-        withdrawals = client.get_withdraw_history(startTime = start_time)['withdrawList']
+        try:
+            deposits = client.get_deposit_history(startTime = start_time)['depositList']
+            withdrawals = client.get_withdraw_history(startTime = start_time)['withdrawList']
+        except Exception as e:
+            logger.error("Error getting deposits and withdrawals.\n'{}'".format(e))
+            return
         deposits = [d for d in deposits if d['asset'] in {self.asset, self.base}]
         withdrawals = [w for w in withdrawals if w['asset'] in {self.asset, self.base}]
 
@@ -494,7 +507,10 @@ class Instance:
         if self.ticks == 1: limit = self.positions_init_ts
 
         # Get trades
-        trades = reversed(client.get_my_trades(symbol = self.pair, limit = 20))
+        try: trades = reversed(client.get_my_trades(symbol = self.pair, limit = 20))
+        except Exception as e:
+            logger.error("Error getting trade info.\n'{}'".format(e))
+            return
         trades = [t for t in trades if t['time'] > limit]
 
         # process trades
@@ -653,7 +669,7 @@ class Instance:
     def init(self, p):
         logger.debug("=== init(): Initialize strategy.")
         self.bot_name = "Binance Pybot"
-        self.version = "0.1.2"
+        self.version = "0.1.3"
         logger.info("Analyzing the market...")
         # get randomization
         # no randomization yet
@@ -684,6 +700,11 @@ class Instance:
         if (1000 * time.time() - self.candles_raw[-1]["ts_end"]) < 60000: return
         logger.debug("=== ping(): Check for a new candle.")
         data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2))
+        if len(data) == 0:
+            logger.error("Error retrieving candle data.")
+            logger.error("Sleeping for 15 seconds before retrying...")
+            time.sleep(14.5)
+            return
         data_top = self.get_candle(data[0])
 
         # New raw candle?
