@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.1.3 (20-02-09)
+Binance Pybot v0.1.4 (20-03-06)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -349,7 +349,7 @@ class Instance:
         try: data = client.get_account()["balances"]
         except Exception as e:
             logger.error("Error getting account balances.\n'{}'".format(e))
-            return
+            return self.positions
         for i in range(len(data)):
             asset = data[i]["asset"]
             if asset not in {self.asset, self.base}: continue
@@ -433,7 +433,7 @@ class Instance:
             withdrawals = client.get_withdraw_history(startTime = start_time)['withdrawList']
         except Exception as e:
             logger.error("Error getting deposits and withdrawals.\n'{}'".format(e))
-            return
+            return 0, 0
         deposits = [d for d in deposits if d['asset'] in {self.asset, self.base}]
         withdrawals = [w for w in withdrawals if w['asset'] in {self.asset, self.base}]
 
@@ -510,7 +510,7 @@ class Instance:
         try: trades = reversed(client.get_my_trades(symbol = self.pair, limit = 20))
         except Exception as e:
             logger.error("Error getting trade info.\n'{}'".format(e))
-            return
+            return 0, 0, p.price
         trades = [t for t in trades if t['time'] > limit]
 
         # process trades
