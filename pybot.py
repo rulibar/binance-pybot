@@ -669,7 +669,7 @@ class Instance:
     def init(self, p):
         logger.debug("=== init(): Initialize strategy.")
         self.bot_name = "Binance Pybot"
-        self.version = "0.1.3"
+        self.version = "0.1.4"
         logger.info("Analyzing the market...")
         # get randomization
         # no randomization yet
