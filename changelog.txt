@@ -21,3 +21,10 @@ v0.1.5 (20-03-08)
 - stop getting 1m candles twice. get them once and use the same data both times
 - ravamp of log outputs, especially debug outputs
 - other updates to logs, comments, formatting
+
+v0.1.6 (20-07-06)
+- Add fix_dec function to fix scientific notation and excess zeroes in the log
+- Change shrink_list to a function instead of a method
+- Remove 2s loop in get_historical_candles_method (simplify error handling)
+- Add 5s loops whenever get_historical_candles_method is called
+- Updates to logs
