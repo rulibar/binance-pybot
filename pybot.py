@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.1.5 (20-03-08)
+Binance Pybot v0.1.6 (20-07-06)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -40,6 +40,16 @@ set_log_file()
 logger.debug(24 * "~~" + " new logger")
 
 # set up trading bot
+def fix_dec(float_in):
+    float_out = "{:.8f}".format(float_in)
+    while float_out[-1] == "0": float_out = float_out[:-1]
+    if float_out[-1] == ".": float_out = float_out[:-1]
+    return float_out
+
+def shrink_list(list_in, size) -> list:
+    if len(list_in) > size: return list_in[-size:]
+    return list_in
+
 class Portfolio:
     def __init__(self, candle, positions, funds):
         self.ts = candle['ts_end']
@@ -67,7 +77,7 @@ class Instance:
 
         self.candles_raw = self._get_candles_raw()
         self.candles = self._get_candles()
-        self.candles_raw = self.shrink_list(self.candles_raw, 2 * self.interval)
+        self.candles_raw = shrink_list(self.candles_raw, 2 * self.interval)
         self.candles_raw_unused = self._get_raw_unused()
 
         self.deposits_pending = set()
@@ -90,7 +100,12 @@ class Instance:
 
     def _get_candles_raw(self):
         logger.debug("~~~ _get_candles_raw(): Get enough 1m candles to create ~600 historical candles.")
-        data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(600 * self.interval))
+        while True:
+            data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(600 * self.interval))
+            if len(data) != 600 * self.interval:
+                logger.error("Error getting historical 1m candle data. Retrying in 5 seconds...")
+                time.sleep(5)
+            else: break
         data.pop()
         for i in range(len(data)): data[i] = self.get_candle(data[i])
         return data
@@ -141,19 +156,11 @@ class Instance:
         return raw_unused
 
     def get_historical_candles_method(self, symbol, interval, start_str):
-        while True:
-            try:
-                data = client.get_historical_klines(symbol, interval, start_str)
-                break
-            except Exception as e:
-                logger.error("Error retrieving candle data.\n'{}'".format(e))
-                logger.error("Sleeping for 2 seconds before retrying...")
-                time.sleep(2)
+        try: data = client.get_historical_klines(symbol, interval, start_str)
+        except Exception as e:
+            logger.error("'{}'".format(e))
+            return list()
         return data
-
-    def shrink_list(self, list_in, size) -> list:
-        if len(list_in) > size: return list_in[-size:]
-        return list_in
 
     def get_candle(self, data):
         # data is a kline list from Binance
@@ -169,7 +176,7 @@ class Instance:
 
     def limit_buy(self, amt, pt):
         try:
-            logging.warning("Trying to buy {} {} for {} {}. (price: {})".format(amt, self.asset, round(amt * pt, self.pt_dec), self.base, pt))
+            logger.warning("Trying to buy {} {} for {} {}. (price: {})".format(fix_dec(amt), self.asset, fix_dec(round(amt * pt, self.pt_dec)), self.base, fix_dec(pt)))
             self.last_order = {"type": "buy", "amt": amt, "pt": pt}
             client.order_limit_buy(symbol = self.pair, quantity = "{:.8f}".format(amt), price = "{:.8f}".format(pt))
         except Exception as e:
@@ -177,7 +184,7 @@ class Instance:
 
     def limit_sell(self, amt, pt):
         try:
-            logging.warning("Trying to sell {} {} for {} {}. (price: {})".format(amt, self.asset, round(amt * pt, self.pt_dec), self.base, pt))
+            logger.warning("Trying to sell {} {} for {} {}. (price: {})".format(fix_dec(amt), self.asset, fix_dec(round(amt * pt, self.pt_dec)), self.base, fix_dec(pt)))
             self.last_order = {"type": "sell", "amt": amt, "pt": pt}
             client.order_limit_sell(symbol = self.pair, quantity = "{:.8f}".format(amt), price = "{:.8f}".format(pt))
         except Exception as e:
@@ -339,7 +346,7 @@ class Instance:
                 candle_new["ts_start"] = candle_raw["ts_start"]
                 self.candles.append(candle_new)
                 self.candles_raw_unused = 0
-                self.candles = self.shrink_list(self.candles, 5000)
+                self.candles = shrink_list(self.candles, 5000)
                 logger.debug("New candle: {}".format(candle_new))
 
     def get_positions(self) -> dict:
@@ -411,7 +418,7 @@ class Instance:
             logger.debug("Deposit processed. {}".format(deposit))
             diffasset = 0; diffbase = 0
             if self.params['log_dws'] == "yes":
-                logger.warning("Deposit of {} {} detected.".format(amt, deposit['asset']))
+                logger.warning("Deposit of {} {} detected.".format(fix_dec(amt), deposit['asset']))
             if deposit['asset'] == self.base: diffbase += amt
             else: diffasset += amt
             return diffasset, diffbase
@@ -421,7 +428,7 @@ class Instance:
             logger.debug("Withdrawal processed. {}".format(withdrawal))
             diffasset = 0; diffbase = 0
             if self.params['log_dws'] == "yes":
-                logger.warning("Withdrawal of {} {} detected.".format(amt, withdrawal['asset']))
+                logger.warning("Withdrawal of {} {} detected.".format(fix_dec(amt), withdrawal['asset']))
             if withdrawal['asset'] == self.base: diffbase -= amt
             else: diffasset -= amt
             return diffasset, diffbase
@@ -526,8 +533,8 @@ class Instance:
         if diffasset_trad != 0: apc = -diffbase_trad / diffasset_trad
         if l['amt'] != 0: rTrade = abs(diffasset_trad / l['amt'])
         if diffasset_trad > 0:
-            log_amt = "{} {}".format(round(diffasset_trad, 8), self.asset)
-            log_size = "{} {}".format(round(diffasset_trad * apc, 8), self.base)
+            log_amt = "{} {}".format(fix_dec(diffasset_trad), self.asset)
+            log_size = "{} {}".format(fix_dec(diffasset_trad * apc), self.base)
             if l['type'] != "buy":
                 logger.info("Manual buy detected.")
                 rTrade = 0
@@ -535,8 +542,8 @@ class Instance:
                 logger.info("Buy order partially filled.")
             logger.warning("{} bought for {}.".format(log_amt, log_size))
         elif diffasset_trad < 0:
-            log_amt = "{} {}".format(round(-diffasset_trad, 8), self.asset)
-            log_size = "{} {}".format(round(-diffasset_trad * apc, 8), self.base)
+            log_amt = "{} {}".format(fix_dec(-diffasset_trad), self.asset)
+            log_size = "{} {}".format(fix_dec(-diffasset_trad * apc), self.base)
             if l['type'] != "sell":
                 logger.info("Manual sell detected")
                 rTrade = 0
@@ -568,10 +575,10 @@ class Instance:
 
         # process unknown changes
         if self.params['log_dws'] == "yes":
-            if diffasset_unkn > 0: logger.info("{} {} has become available.".format(round(diffasset_unkn, 8), self.asset))
-            elif diffasset_unkn < 0: logger.info("{} {} has become unavailable.".format(round(-diffasset_unkn, 8), self.asset))
-            if diffbase_unkn > 0: logger.info("{} {} has become available.".format(round(diffbase_unkn, 8), self.base))
-            elif diffbase_unkn < 0: logger.info("{} {} has become unavailable.".format(round(-diffbase_unkn, 8), self.base))
+            if diffasset_unkn > 0: logger.info("{} {} has become available.".format(fix_dec(diffasset_unkn), self.asset))
+            elif diffasset_unkn < 0: logger.info("{} {} has become unavailable.".format(fix_dec(-diffasset_unkn), self.asset))
+            if diffbase_unkn > 0: logger.info("{} {} has become available.".format(fix_dec(diffbase_unkn), self.base))
+            elif diffbase_unkn < 0: logger.info("{} {} has become unavailable.".format(fix_dec(-diffbase_unkn), self.base))
 
         # set position and apc
         if apc == 0: apc = p.price
@@ -623,11 +630,11 @@ class Instance:
         if self.days != 0: tpd = self.trades / self.days
         header = "{} {} {} {} {}".format(self.bot_name, self.version, hr, self.exchange.title(), self.pair)
         trades = "{} trades ({} per day)".format(int(self.trades), round(tpd, 2))
-        currency = "{} {}".format(round(p.base, 8), self.base)
-        price = "{} {}/{}".format(round(p.price, 8), self.base, self.asset)
-        assets = "{} {}".format(round(p.asset, 8), self.asset)
-        assetvalue = "{} {}".format(round(p.positionValue, 8), self.base)
-        accountvalue = "{} {}".format(round(p.size, 8), self.base)
+        currency = "{} {}".format(fix_dec(p.base), self.base)
+        price = "{} {}/{}".format(fix_dec(p.price), self.base, self.asset)
+        assets = "{} {}".format(fix_dec(p.asset), self.asset)
+        assetvalue = "{} {}".format(fix_dec(p.positionValue), self.base)
+        accountvalue = "{} {}".format(fix_dec(p.size), self.base)
         boteff = "{}% {},".format(round(100 * r['be'], 2), self.base)
         boteff += " {}% {}".format(round(100 * ((1 + r['be']) / (1 + r['bh'])) - 100, 2), self.asset)
         botprof = "{}% {},".format(round(100 * r['bProfits'], 2), self.base)
@@ -648,7 +655,7 @@ class Instance:
     def init(self, p):
         logger.debug("~~~ init(): Initialize strategy.")
         self.bot_name = "Binance Pybot"
-        self.version = "0.1.5"
+        self.version = "0.1.6"
         logger.info("Analyzing the market...")
         # get randomization
         # no randomization yet
@@ -677,11 +684,12 @@ class Instance:
         # check if its time for a new candle
         if (1000 * time.time() - self.candles_raw[-1]["ts_end"]) < 60000: return
         logger.debug("~~~ ping(): Check for a new candle.")
-        data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2))
-        if len(data) == 0:
-            logger.error("Error retrieving candle data. Sleeping for 15 seconds before retrying...")
-            time.sleep(14.5)
-            return
+        while True:
+            data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2))
+            if len(data) == 0:
+                logger.error("Error getting historical candle data. Retrying in 5 seconds...")
+                time.sleep(5)
+            else: break
         data_top = self.get_candle(data[0])
 
         # New raw candle?
