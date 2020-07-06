@@ -57,3 +57,32 @@ aws bots. I'll only be using 1.x.x on a few aws bots for testing and updating.
 
 This is mostly working so I plan to slow down work soon and focus more on
 testing and incremental progress.
+
+5-9
+Things to do:
+/- Stop outputting scientific notation to the log
+- Investigate issue where the bot just stops trading (bot07_200310)
+
+7-4
+- Investigate 'depositList' bug
+- Consider ways to shorten the log when, for example, Binance goes down and
+the bot is checking if it's up every 2 or 15 seconds
+- Test and make sure the bot is working by running two of the same instances,
+one on pybot, and one on CT, and see if they trade at the same time and report
+the same profits.
+    - Test deposits and withdrawals too, and make sure that they don't affect
+    the profits
+
+***
+
+To fix the scientific notation I'll have to add a new function called fix_dec
+which takes in the float, fixes it to 8 decimal places, then removes zeroes
+from the end.
+
+7-6
+- Implemented fix_dec as a function
+- Converted shrink_list to a function instead of a method
+- Simplified the way historical candles errors are handled
+
+I intend to fix the depositList bug next but I wanted to do this in a separate
+update.
