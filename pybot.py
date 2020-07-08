@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.1.6 (20-07-06)
+Binance Pybot v0.1.7 (20-07-08)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -102,7 +102,7 @@ class Instance:
         logger.debug("~~~ _get_candles_raw(): Get enough 1m candles to create ~600 historical candles.")
         while True:
             data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(600 * self.interval))
-            if len(data) != 600 * self.interval:
+            if len(data) < 0.9 * 600 * self.interval:
                 logger.error("Error getting historical 1m candle data. Retrying in 5 seconds...")
                 time.sleep(5)
             else: break
@@ -409,11 +409,11 @@ class Instance:
     def get_dws(self):
         diffasset_dw = 0; diffbase_dw = 0
         ts_last = self.candles[-2]['ts_end']
-        ts_pending = self.earliest_pending
-        start_time = ts_pending - 1000
-        if self.ticks == 1: start_time = ts_pending - 1000 * 60 * 60 * 24 * 7
+        if len(self.deposits_pending) == 0 and len(self.withdrawals_pending) == 0: self.earliest_pending = ts_last
+        start_time = self.earliest_pending - 1000
+        if self.ticks == 1: start_time = self.earliest_pending - 1000 * 60 * 60 * 24 * 7
 
-        def process_d(deposit, id):
+        def process_d(deposit):
             amt = deposit['amount']
             logger.debug("Deposit processed. {}".format(deposit))
             diffasset = 0; diffbase = 0
@@ -423,7 +423,7 @@ class Instance:
             else: diffasset += amt
             return diffasset, diffbase
 
-        def process_w(withdrawal, id):
+        def process_w(withdrawal):
             amt = withdrawal['amount'] + withdrawal['transactionFee']
             logger.debug("Withdrawal processed. {}".format(withdrawal))
             diffasset = 0; diffbase = 0
@@ -443,60 +443,52 @@ class Instance:
         deposits = [d for d in deposits if d['asset'] in {self.asset, self.base}]
         withdrawals = [w for w in withdrawals if w['asset'] in {self.asset, self.base}]
 
-        if self.ticks == 1:
-            # Init dws, dws_pending, earliest_pending
-            deposits = [d for d in deposits if d['status'] < 1]
-            withdrawals = [w for w in withdrawals if w['status'] < 0]
-            for deposit in deposits:
-                id = deposit['txId']
+        # add new pending trades to pending set
+        # check for and process old pending trades that were filled
+        for deposit in deposits:
+            id = deposit['txId']
+            if deposit['status'] < 1:
                 self.deposits_pending.add(id)
-                if deposit['insertTime'] < ts_pending:
-                    ts_pending = deposit['insertTime']
-            for withdrawal in withdrawals:
-                id = withdrawal['id']
+                self.earliest_pending = start_time
+                continue
+            if id not in self.deposits_pending: continue
+            if deposit['status'] > 0:
+                diffasset, diffbase = process_d(deposit)
+                diffasset_dw += diffasset
+                diffbase_dw += diffbase
+                self.deposits_pending.remove(id)
+        for withdrawal in withdrawals:
+            id = withdrawal['id']
+            if withdrawal['status'] < 0:
                 self.withdrawals_pending.add(id)
-                if withdrawal['applyTime'] < ts_pending:
-                    ts_pending = withdrawal['applyTime']
-        else:
-            # check if pending dws have been completed then process them
-            for deposit in deposits:
-                id = deposit['txId']
-                if id not in self.deposits_pending: continue
-                if deposit['status'] > 0:
-                    diffasset, diffbase = process_d(deposit, id)
-                    diffasset_dw += diffasset
-                    diffbase_dw += diffbase
-                    self.deposits_pending.remove(id)
-            for withdrawal in withdrawals:
-                id = withdrawal['id']
-                if id not in self.withdrawals_pending: continue
-                if withdrawal['status'] > -1:
-                    diffasset, diffbase = process_w(withdrawal, id)
-                    diffasset_dw += diffasset
-                    diffbase_dw += diffbase
-                    self.withdrawals_pending.remove(id)
-
-            # check if any dws have been added in the last candle
-            deposits = [d for d in deposits if d['insertTime'] > ts_last]
-            withdrawals = [w for w in withdrawals if w['applyTime'] > ts_last]
-
-            # add new dws to pending if pending or process them
-            for deposit in deposits:
-                id = deposit['txId']
-                if deposit['status'] < 1:
-                    self.deposits_pending.add(id)
-                    continue
-                diffasset, diffbase = process_d(deposit, id)
+                self.earliest_pending = start_time
+                continue
+            if id not in self.withdrawals_pending: continue
+            if withdrawal['status'] > -1:
+                diffasset, diffbase = process_w(withdrawal)
                 diffasset_dw += diffasset
                 diffbase_dw += diffbase
-            for withdrawal in withdrawals:
-                id = withdrawal['id']
-                if withdrawal['status'] < 0:
-                    self.withdrawals_pending.add(id)
-                    continue
-                diffasset, diffbase = process_w(withdrawal, id)
-                diffasset_dw += diffasset
-                diffbase_dw += diffbase
+                self.withdrawals_pending.remove(id)
+
+        # skip the last section if it's the first tick
+        if self.ticks == 1: return diffasset_dw, diffbase_dw
+
+        # process dws received and completed in the last candle
+        deposits = [d for d in deposits if d['insertTime'] > ts_last]
+        deposits = [d for d in deposits if d['status'] > 0]
+        withdrawals = [w for w in withdrawals if w['applyTime'] > ts_last]
+        withdrawals = [w for w in withdrawals if w['status'] > -1]
+
+        for deposit in deposits:
+            id = deposit['txId']
+            diffasset, diffbase = process_d(deposit)
+            diffasset_dw += diffasset
+            diffbase_dw += diffbase
+        for withdrawal in withdrawals:
+            id = withdrawal['id']
+            diffasset, diffbase = process_w(withdrawal)
+            diffasset_dw += diffasset
+            diffbase_dw += diffbase
 
         return diffasset_dw, diffbase_dw
 
@@ -655,7 +647,7 @@ class Instance:
     def init(self, p):
         logger.debug("~~~ init(): Initialize strategy.")
         self.bot_name = "Binance Pybot"
-        self.version = "0.1.6"
+        self.version = "0.1.7"
         logger.info("Analyzing the market...")
         # get randomization
         # no randomization yet
