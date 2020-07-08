@@ -86,3 +86,55 @@ from the end.
 
 I intend to fix the depositList bug next but I wanted to do this in a separate
 update.
+
+***
+
+The depositList bug seems to be happening because on each tick the bot is
+checking for all deposits since the bot was started. But after a certain point,
+the function starts throwing an error because the start date is too far back.
+
+Traceback (most recent call last):
+  File "dw-test.py", line 23, in <module>
+    deposits = client.get_deposit_history(startTime = start_time)['depositList']
+KeyError: 'depositList'
+
+deposits = client.get_deposit_history(startTime = start_time)
+{'msg': 'Time interval must be within 0-90 days', 'success': False}
+
+***
+
+Notes:
+- The program gets all deposits since the bot was started
+- It filters them by coin
+- It checks them one by one if they are set as pending but have been filled
+- It then filters everything that didn't happen in the last candle
+- Everything remaining:
+    - If it's pending add it to the pending list
+    - If it's completed then process it
+
+- The root of this issue is that earliest_pending is only updated on the 0 or 1
+tick.
+- The only thing this variable is used for is calculating when to start
+importing deposits and withdrawals.
+- If a new deposit comes in the insertTime should be within the new candle,
+since that's when Binance would have first seen it.
+
+7-7
+There is also a bug that existed before and now. If there was a deposit or a
+withdrawal within 1 candle prior to starting the bot, the bot will process it
+on the first tick. Results in a false dw message followed by a false
+available/unavailable funds message.
+- Fixed by exiting the function early on the first tick
+
+Another issue that I see is if a deposit was pending in the past but it got
+filled in the prior candle it might send 2 log outputs. 1 for when it's
+removed from the pending list. The other at the end when it's seen as a trade
+completed in the last candle.
+- Tested this, not an issue
+- I guess it's because trades that were pending have an insertTime from before
+the previous candle. As such, they are cut off when I filter the list.
+
+7-8
+Well it seems like my redo of the get_dws function is working fine. So v0.1.7
+fixes the depositList bug on bots running 3+ months and it fixes a bug where
+the bot would repeatedly fail to get 1m candles on startup.
