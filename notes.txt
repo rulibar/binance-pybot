@@ -61,13 +61,14 @@ testing and incremental progress.
 5-9
 Things to do:
 /- Stop outputting scientific notation to the log
-- Investigate issue where the bot just stops trading (bot07_200310)
+/- Investigate issue where the bot just stops trading (bot07_200310)
+(7-8 Not really convinced that there is an issue. I'll wait for more evidence.)
 
 7-4
-- Investigate 'depositList' bug
+/- Investigate 'depositList' bug
 - Consider ways to shorten the log when, for example, Binance goes down and
 the bot is checking if it's up every 2 or 15 seconds
-- Test and make sure the bot is working by running two of the same instances,
+/- Test and make sure the bot is working by running two of the same instances,
 one on pybot, and one on CT, and see if they trade at the same time and report
 the same profits.
     - Test deposits and withdrawals too, and make sure that they don't affect
