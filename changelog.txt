@@ -32,3 +32,8 @@ v0.1.6 (20-07-06)
 v0.1.7 (20-07-08)
 - Fixed a bug where the bot would repeatedly fail to get 1m candles on startup
 - Redo of get_dws method which fixes depositList bug
+
+v0.1.8 (20-07-11)
+- Create get_historical_candles to loop get_historical_candles_method until it succeeds
+- If get_historical_candles fails more than 3x, stop error logs and track how many times it failed
+- Replace 2 existing loops with the new function
