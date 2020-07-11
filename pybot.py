@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.1.7 (20-07-08)
+Binance Pybot v0.1.8 (20-07-11)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -100,12 +100,7 @@ class Instance:
 
     def _get_candles_raw(self):
         logger.debug("~~~ _get_candles_raw(): Get enough 1m candles to create ~600 historical candles.")
-        while True:
-            data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(600 * self.interval))
-            if len(data) < 0.9 * 600 * self.interval:
-                logger.error("Error getting historical 1m candle data. Retrying in 5 seconds...")
-                time.sleep(5)
-            else: break
+        data = self.get_historical_candles(self.pair, "1m", 600 * self.interval)
         data.pop()
         for i in range(len(data)): data[i] = self.get_candle(data[i])
         return data
@@ -156,10 +151,25 @@ class Instance:
         return raw_unused
 
     def get_historical_candles_method(self, symbol, interval, start_str):
+        data, err = list(), str()
         try: data = client.get_historical_klines(symbol, interval, start_str)
-        except Exception as e:
-            logger.error("'{}'".format(e))
-            return list()
+        except Exception as e: err = e
+        return data, err
+
+    def get_historical_candles(self, symbol, interval, n_candles):
+        tries = 0
+        while True:
+            data, err = self.get_historical_candles_method(symbol, interval, "{} minutes ago UTC".format(n_candles))
+            tries += 1
+            if len(data) == 0:
+                if tries <= 3:
+                    err_msg = "Error getting historical candle data. Retrying in 5 seconds..."
+                    if err != "": err_msg += "\n'{}'".format(err)
+                    logger.error(err_msg)
+                if tries == 3: logger.error("(Future repeats of this error hidden to avoid spam.)")
+                time.sleep(5)
+            else: break
+        if tries > 3: logger.error("Failed to get historical candle data {} times.".format(tries - 1))
         return data
 
     def get_candle(self, data):
@@ -647,7 +657,7 @@ class Instance:
     def init(self, p):
         logger.debug("~~~ init(): Initialize strategy.")
         self.bot_name = "Binance Pybot"
-        self.version = "0.1.7"
+        self.version = "0.1.8"
         logger.info("Analyzing the market...")
         # get randomization
         # no randomization yet
@@ -676,12 +686,7 @@ class Instance:
         # check if its time for a new candle
         if (1000 * time.time() - self.candles_raw[-1]["ts_end"]) < 60000: return
         logger.debug("~~~ ping(): Check for a new candle.")
-        while True:
-            data = self.get_historical_candles_method(self.pair, "1m", "{} minutes ago UTC".format(2))
-            if len(data) == 0:
-                logger.error("Error getting historical candle data. Retrying in 5 seconds...")
-                time.sleep(5)
-            else: break
+        data = self.get_historical_candles(self.pair, "1m", 2)
         data_top = self.get_candle(data[0])
 
         # New raw candle?
