@@ -139,3 +139,10 @@ the previous candle. As such, they are cut off when I filter the list.
 Well it seems like my redo of the get_dws function is working fine. So v0.1.7
 fixes the depositList bug on bots running 3+ months and it fixes a bug where
 the bot would repeatedly fail to get 1m candles on startup.
+
+***
+
+Now the only thing that I can think of to fix is the repeated error messages
+when, for example, Binance goes down. Caused by the bot retrying every 5
+seconds.
+
