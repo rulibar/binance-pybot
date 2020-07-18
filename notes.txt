@@ -66,7 +66,7 @@ Things to do:
 
 7-4
 /- Investigate 'depositList' bug
-- Consider ways to shorten the log when, for example, Binance goes down and
+/- Consider ways to shorten the log when, for example, Binance goes down and
 the bot is checking if it's up every 2 or 15 seconds
 /- Test and make sure the bot is working by running two of the same instances,
 one on pybot, and one on CT, and see if they trade at the same time and report
@@ -146,3 +146,10 @@ Now the only thing that I can think of to fix is the repeated error messages
 when, for example, Binance goes down. Caused by the bot retrying every 5
 seconds.
 
+7-17
+I was getting a bug where my bot wasn't trading when it should.
+Turns out it was because I was rounding my moving average to 8 decimals. And
+the low volatility of the coin caused the MAs to have the same value after
+rounding.
+
+Don't round indicators in your strategy!
