@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.1.8 (20-07-11)
+Binance Pybot v0.1.9 (20-8-9)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -21,13 +21,16 @@ interval_mins = 30
 
 # set up logger
 def set_log_file():
-    # Sets the log file based on the current date in GMT
-    if not os.path.isdir("./logs/"): os.mkdir("./logs/")
+    # Set up the log folders
     gmt = time.gmtime()
     yy = str(gmt.tm_year)[2:]; mm = str(gmt.tm_mon); dd = str(gmt.tm_mday)
     if len(mm) == 1: mm = "0" + mm
     if len(dd) == 1: dd = "0" + dd
-    if not os.path.isdir("./logs/" + yy + mm): os.mkdir("./logs/" + yy + mm)
+    path = "./logs/"
+    if not os.path.isdir(path): os.mkdir(path)
+    path += "{}/".format(yy + mm)
+    if not os.path.isdir(path): os.mkdir(path)
+    # Set the log destination and format
     fileh = logging.FileHandler("./logs/{}/{}.log".format(yy + mm, yy + mm + dd), "a")
     formatter = logging.Formatter("%(levelname)s %(asctime)s - %(message)s")
     fileh.setFormatter(formatter)
@@ -69,7 +72,8 @@ class Instance:
         self.next_log = 0
         self.ticks = 0; self.days = 0; self.trades = 0
         self.exchange = "binance"
-        self.asset = str(asset); self.base = str(base)
+        self.base = str(base)
+        self.asset = str(asset)
         self.pair = self.asset + self.base
         self.interval = int(interval_mins)
         logger.info("New trader instance started on {} {}m.".format(self.pair, self.interval))
@@ -273,7 +277,7 @@ class Instance:
         # check values
         funds = float(params['funds'])
         if funds < 0:
-            logger.warning("Warning! Maximum amount to invest should be greater than zero.")
+            logger.warning("Warning! Maximum amount to invest should be zero or greater.")
             params['funds'] = "0"
 
         logs_per_day = float(params['logs_per_day'])
@@ -313,13 +317,13 @@ class Instance:
             keys_changed.add('funds'); keys_changed.add('logs_per_day'); keys_changed.add('log_dws')
 
         if "funds" in keys_changed:
-            if params['funds'] == 0: logger.info("No maximum investment amount specified.")
+            if params['funds'] == "0": logger.info("No maximum investment amount specified.")
             else: logger.info("Maximum investment amount set to {} {}.".format(params['funds'], self.base))
             self.params['funds'] = params['funds']
             keys_changed.remove('funds')
         if "logs_per_day" in keys_changed:
-            if params['logs_per_day'] == 0: logger.info("Log updates turned off.")
-            elif params['logs_per_day'] == 1: logger.info("Logs updating once per day.")
+            if params['logs_per_day'] == "0": logger.info("Log updates turned off.")
+            elif params['logs_per_day'] == "1": logger.info("Logs updating once per day.")
             else: logger.info("Logs updating {} times per day".format(params['logs_per_day']))
             self.params['logs_per_day'] = params['logs_per_day']
             keys_changed.remove('logs_per_day')
@@ -630,6 +634,8 @@ class Instance:
         hr = "~~~~~~~"
         tpd = float()
         if self.days != 0: tpd = self.trades / self.days
+        winrate = float()
+        if r['W'] + r['L'] != 0: winrate = 100 * r['W'] / (r['W'] + r['L'])
         header = "{} {} {} {} {}".format(self.bot_name, self.version, hr, self.exchange.title(), self.pair)
         trades = "{} trades ({} per day)".format(int(self.trades), round(tpd, 2))
         currency = "{} {}".format(fix_dec(p.base), self.base)
@@ -647,6 +653,7 @@ class Instance:
         logger.info("Currency: {} | Current price: {}".format(currency, price))
         logger.info("Assets: {} | Value of assets: {}".format(assets, assetvalue))
         logger.info("Value of account: {}".format(accountvalue))
+        logger.info("    Win rate: {}%".format(round(winrate, 2)))
         logger.info("    Wins: {} | Average win: {}%".format(r['W'], round(100 * r['w'], 2)))
         logger.info("    Losses: {} | Average loss: {}%".format(r['L'], round(100 * r['l'], 2)))
         logger.info("    Current profits: {}%".format(round(100 * r['cProfits'], 2)))
