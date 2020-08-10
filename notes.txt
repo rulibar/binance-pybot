@@ -153,3 +153,7 @@ the low volatility of the coin caused the MAs to have the same value after
 rounding.
 
 Don't round indicators in your strategy!
+
+7-31
+There is a bug if you try to use 0 as maximum investment amount. It check if
+it's equal to the number 0 but it's actually a string so it comes back as false.
