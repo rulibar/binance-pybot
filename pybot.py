@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.1.9 (20-8-9)
+Binance Pybot v0.1.10 (20-8-20)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -399,7 +399,10 @@ class Instance:
         sizeT = p.funds * (1 - s['rinTargetLast']) + apc * p.asset
         rinT = apc * p.asset / sizeT
 
-        if self.ticks > 1:
+        if self.ticks == 1:
+            logger.debug("Fake portfolios initialized.")
+            size_f = 1; size_t = 1
+        else:
             logger.debug("Fake portfolios updated.")
             size_f = pos_f['base'][1] + apc * pos_f['asset'][1]
             size_t = pos_t['base'][1] + apc * pos_t['asset'][1]
@@ -410,9 +413,6 @@ class Instance:
                 if r['W'] != 0: r['w'] = r['wSum'] / r['W']
                 if r['L'] != 0: r['l'] = r['lSum'] / r['L']
                 size_t = 1
-        else:
-            logger.debug("Fake portfolios initialized.")
-            size_f = 1; size_t = 1
 
         base_f = (1 - rin) * size_f; base_t = (1 - rinT) * size_t
         asset_f = (rin / apc) * size_f; asset_t = (rinT / apc) * size_t
@@ -600,7 +600,7 @@ class Instance:
         logger.debug("~~~ get_performance(): Calculate bot performance data.")
         if self.ticks == 1:
             self.candle_start = dict(self.candles[-1])
-            self.positions_start = dict(self.positions)
+            self.positions_start = {key: value[:] for key, value in self.positions.items()}
         r = self.performance
         s = self.signal
         pos_f = self.positions_f
@@ -635,7 +635,7 @@ class Instance:
         tpd = float()
         if self.days != 0: tpd = self.trades / self.days
         winrate = float()
-        if r['W'] + r['L'] != 0: winrate = 100 * r['W'] / (r['W'] + r['L'])
+        if r['W'] + r['L'] != 0: winrate = r['W'] / (r['W'] + r['L'])
         header = "{} {} {} {} {}".format(self.bot_name, self.version, hr, self.exchange.title(), self.pair)
         trades = "{} trades ({} per day)".format(int(self.trades), round(tpd, 2))
         currency = "{} {}".format(fix_dec(p.base), self.base)
@@ -653,7 +653,7 @@ class Instance:
         logger.info("Currency: {} | Current price: {}".format(currency, price))
         logger.info("Assets: {} | Value of assets: {}".format(assets, assetvalue))
         logger.info("Value of account: {}".format(accountvalue))
-        logger.info("    Win rate: {}%".format(round(winrate, 2)))
+        logger.info("    Win rate: {}%".format(round(100 * winrate, 2)))
         logger.info("    Wins: {} | Average win: {}%".format(r['W'], round(100 * r['w'], 2)))
         logger.info("    Losses: {} | Average loss: {}%".format(r['L'], round(100 * r['l'], 2)))
         logger.info("    Current profits: {}%".format(round(100 * r['cProfits'], 2)))
@@ -681,8 +681,8 @@ class Instance:
         s = self.signal
 
         close_data = numpy.array([c['close'] for c in self.candles])
-        mas = round(talib.SMA(close_data, timeperiod = 20)[-1], 8)
-        mal = round(talib.SMA(close_data, timeperiod = 100)[-1], 8)
+        mas = talib.SMA(close_data, timeperiod = 20)[-1]
+        mal = talib.SMA(close_data, timeperiod = 100)[-1]
         logger.debug("20 SMA: " + str(mas))
         logger.debug("100 SMA: " + str(mal))
 
@@ -714,19 +714,19 @@ class Instance:
             self.get_params()
             self.get_new_candle()
 
-            self.positions_last = dict(self.positions)
+            self.positions_last = {key: value[:] for key, value in self.positions.items()}
             self.positions = self.get_positions()
             p = Portfolio(self.candles[-1], self.positions, float(self.params['funds']))
             self.get_dwts(p)
             self.get_performance(p)
 
-            # log output
+            # Log output
             if self.params['logs_per_day'] == "0": self.next_log = self.days + 1
             if self.days >= self.next_log:
                 self.log_update(p)
                 self.next_log += 1 / float(self.params['logs_per_day'])
 
-            # trading strategy, buy/sell/other
+            # Trading strategy, buy/sell/other
             self.strat(p)
             self.bso(p)
 
