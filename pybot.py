@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.1.10 (20-8-20)
+Binance Pybot v0.1.11 (20-10-31)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -36,11 +36,10 @@ def set_log_file():
     fileh.setFormatter(formatter)
     logger.handlers = [fileh]
 
-logging.basicConfig(level = logging.INFO)
+logging.basicConfig(level=logging.INFO)
 logging.Formatter.converter = time.gmtime
 logger = logging.getLogger()
 set_log_file()
-logger.debug(24 * "~~" + " new logger")
 
 # set up trading bot
 def fix_dec(float_in):
@@ -49,7 +48,7 @@ def fix_dec(float_in):
     if float_out[-1] == ".": float_out = float_out[:-1]
     return float_out
 
-def shrink_list(list_in, size) -> list:
+def shrink_list(list_in, size):
     if len(list_in) > size: return list_in[-size:]
     return list_in
 
@@ -103,14 +102,14 @@ class Instance:
         self.init(p)
 
     def _get_candles_raw(self):
-        logger.debug("~~~ _get_candles_raw(): Get enough 1m candles to create ~600 historical candles.")
+        # get enough 1m candles to create 600 historical candles
         data = self.get_historical_candles(self.pair, "1m", 600 * self.interval)
         data.pop()
         for i in range(len(data)): data[i] = self.get_candle(data[i])
         return data
 
     def _get_candles(self):
-        logger.debug("~~~ _get_candles(): Create historical candles from 1m candles.")
+        # convert historical 1m candles into historical candles
         candles = list(); candle_new = dict()
         candles_raw_clone = list(self.candles_raw)
         for i in range(self.interval - 2): candles_raw_clone.pop()
@@ -133,11 +132,10 @@ class Instance:
                 candle_new["ts_start"] = candle_raw["ts_start"]
                 candles.append(candle_new)
 
-        logger.debug("Last candle: {}".format(candles[0]))
         return candles[::-1]
 
     def _get_raw_unused(self):
-        logger.debug("~~~ _get_raw_unused(): Get remaining 1m candles.")
+        # get unused historical 1m candles
         raw_unused = -1
         str_out = str()
         data = self.candles_raw[-2 * self.interval:]
@@ -151,7 +149,6 @@ class Instance:
 
             if raw_unused > 0: str_out += "    {}\n".format(candle_raw)
 
-        logger.debug("{} current 1m candles.\n{}".format(raw_unused, str_out[:-1]))
         return raw_unused
 
     def get_historical_candles_method(self, symbol, interval, start_str):
@@ -205,9 +202,8 @@ class Instance:
             logger.error("Error selling.\n'{}'".format(e))
 
     def bso(self, p):
-        logger.debug("~~~ bso(): buy/sell/other")
+        # buy/sell/other
         s = self.signal
-        logger.debug("s['rinTarget']: {} s['rinTargetLast']: {}".format(s['rinTarget'], s['rinTargetLast']))
 
         rbuy = s['rinTarget'] - s['rinTargetLast']
         order_size = 0
@@ -234,7 +230,7 @@ class Instance:
             self.last_order = {"type": "none", "amt": 0, "pt": p.price}
 
     def close_orders(self):
-        logger.debug("~~~ close_orders(): Close open orders.")
+        # close open orders
         try:
             orders = client.get_open_orders(symbol = self.pair)
             for order in orders:
@@ -243,7 +239,7 @@ class Instance:
             logger.error("Error closing open orders.\n'{}'".format(e))
 
     def update_vars(self):
-        logger.debug("~~~ update_vars(): Update preliminary vars.")
+        # Get preliminary vars
         self.ticks += 1
         self.days = (self.ticks - 1) * self.interval / (60 * 24)
 
@@ -265,7 +261,7 @@ class Instance:
         self.pt_dec = pt_dec
 
     def get_params(self):
-        logger.debug("~~~ get_params(): Import and process parameters.")
+        # import and process params from config.txt
         params = dict()
         with open("config.txt") as cfg:
             par = [l.split()[0] for l in cfg.read().split("\n")[2:-1]]
@@ -340,7 +336,7 @@ class Instance:
                 self.params[key] = params[key]
 
     def get_new_candle(self):
-        logger.debug("~~~ get_new_candle(): Get new candle from 1m candles.")
+        # Create a new candle from 1m candles
         candle_new = dict()
         for i in range(self.interval):
             candle_raw = self.candles_raw[- 1 - i]
@@ -361,10 +357,8 @@ class Instance:
                 self.candles.append(candle_new)
                 self.candles_raw_unused = 0
                 self.candles = shrink_list(self.candles, 5000)
-                logger.debug("New candle: {}".format(candle_new))
 
-    def get_positions(self) -> dict:
-        logger.debug("~~~ get_positions(): Get balances.")
+    def get_positions(self):
         positions = {"asset": [self.asset, 0], "base": [self.base, 0]}
         try: data = client.get_account()["balances"]
         except Exception as e:
@@ -399,11 +393,8 @@ class Instance:
         sizeT = p.funds * (1 - s['rinTargetLast']) + apc * p.asset
         rinT = apc * p.asset / sizeT
 
-        if self.ticks == 1:
-            logger.debug("Fake portfolios initialized.")
-            size_f = 1; size_t = 1
+        if self.ticks == 1: size_f = 1; size_t = 1
         else:
-            logger.debug("Fake portfolios updated.")
             size_f = pos_f['base'][1] + apc * pos_f['asset'][1]
             size_t = pos_t['base'][1] + apc * pos_t['asset'][1]
             if s['rinTarget'] == 0 and p.positionValue < self.min_order:
@@ -429,7 +420,6 @@ class Instance:
 
         def process_d(deposit):
             amt = deposit['amount']
-            logger.debug("Deposit processed. {}".format(deposit))
             diffasset = 0; diffbase = 0
             if self.params['log_dws'] == "yes":
                 logger.warning("Deposit of {} {} detected.".format(fix_dec(amt), deposit['asset']))
@@ -439,7 +429,6 @@ class Instance:
 
         def process_w(withdrawal):
             amt = withdrawal['amount'] + withdrawal['transactionFee']
-            logger.debug("Withdrawal processed. {}".format(withdrawal))
             diffasset = 0; diffbase = 0
             if self.params['log_dws'] == "yes":
                 logger.warning("Withdrawal of {} {} detected.".format(fix_dec(amt), withdrawal['asset']))
@@ -531,7 +520,6 @@ class Instance:
                 if not trade['isBuyer']: qty *= -1
                 diffasset_trad += qty
                 diffbase_trad -= qty * price
-            logger.debug(str_out)
 
         rbuy = s['rinTarget'] - s['rinTargetLast']
         rTrade = 0
@@ -564,7 +552,7 @@ class Instance:
         return diffasset_trad, diffbase_trad, apc
 
     def get_dwts(self, p):
-        logger.debug("~~~ get_dwts(): Get deposits, withdrawals, and trades.")
+        # get deposits, withdrawals, and trades
         s = self.signal
         diffasset = round(self.positions['asset'][1] - self.positions_last['asset'][1], 8)
         diffbase = round(self.positions['base'][1] - self.positions_last['base'][1], 8)
@@ -597,7 +585,6 @@ class Instance:
         return
 
     def get_performance(self, p):
-        logger.debug("~~~ get_performance(): Calculate bot performance data.")
         if self.ticks == 1:
             self.candle_start = dict(self.candles[-1])
             self.positions_start = {key: value[:] for key, value in self.positions.items()}
@@ -623,12 +610,8 @@ class Instance:
         if r['cProfits'] >= 0: W += 1; wSum = r['wSum'] + r['cProfits']; w = wSum / W
         if r['cProfits'] < 0: L += 1; lSum = r['lSum'] + r['cProfits']; l = lSum / L
         r['be'] = W * w + L * l
-        logger.debug("r: {}".format(r))
 
     def log_update(self, p):
-        logger.debug("~~~ log_update(): Output an update to the log.")
-        logger.debug("Most recent candle: " + str(self.candles[-1]))
-        logger.debug("Positions: " + str(self.positions))
         r = self.performance
 
         hr = "~~~~~~~"
@@ -662,9 +645,8 @@ class Instance:
         logger.info("Buy and hold: {}%".format(round(100 * r['bh'], 2)))
 
     def init(self, p):
-        logger.debug("~~~ init(): Initialize strategy.")
         self.bot_name = "Binance Pybot"
-        self.version = "0.1.8"
+        self.version = "0.1.11"
         logger.info("Analyzing the market...")
         # get randomization
         # no randomization yet
@@ -677,14 +659,11 @@ class Instance:
         - s stands for signal, rinTarget stands for 'ratio invested target'
         - Set s['rinTarget'] between 0 and 1. 0 is 0%, 1 is 100% invested
         """
-        logger.debug("~~~ strat(): Trading strategy.")
         s = self.signal
 
         close_data = numpy.array([c['close'] for c in self.candles])
         mas = talib.SMA(close_data, timeperiod = 20)[-1]
         mal = talib.SMA(close_data, timeperiod = 100)[-1]
-        logger.debug("20 SMA: " + str(mas))
-        logger.debug("100 SMA: " + str(mal))
 
         s['rinTarget'] = 0
         if mas > mal: s['rinTarget'] = 1
@@ -692,7 +671,6 @@ class Instance:
     def ping(self):
         # check if its time for a new candle
         if (1000 * time.time() - self.candles_raw[-1]["ts_end"]) < 60000: return
-        logger.debug("~~~ ping(): Check for a new candle.")
         data = self.get_historical_candles(self.pair, "1m", 2)
         data_top = self.get_candle(data[0])
 
@@ -701,12 +679,9 @@ class Instance:
             self.candles_raw_unused += 1
             self.candles_raw.append(data_top)
             self.candles_raw = self.candles_raw[-2 * self.interval:]
-            logger.debug("New raw candle: {}".format(data_top))
 
         # New candle?
         if self.candles_raw_unused == self.interval:
-            logger.debug(24 * "~~" + " tick")
-
             # Preliminary setup
             set_log_file()
             self.close_orders()
