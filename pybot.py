@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.1.11 (20-10-31)
+Binance Pybot v0.1.12 (20-10-31)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -11,13 +11,16 @@ import logging
 import talib
 from binance.client import Client
 
-# user vars
+# instance vars
 api_key = ""
 api_secret = ""
 client = Client(api_key, api_secret)
 
 asset = "BTC"; base = "USDT"
 interval_mins = 30
+
+# strategy vars
+storage = dict()
 
 # set up logger
 def set_log_file():
@@ -645,11 +648,14 @@ class Instance:
         logger.info("Buy and hold: {}%".format(round(100 * r['bh'], 2)))
 
     def init(self, p):
+        # Binance Pybot 20/100 SXS
         self.bot_name = "Binance Pybot"
-        self.version = "0.1.11"
+        self.version = "0.1.12"
         logger.info("Analyzing the market...")
-        # get randomization
-        # no randomization yet
+
+        # vars
+        ma_lens = [[20, 100]]
+        storage["ma_lens"] = ma_lens
         logger.info("Ready to start trading...")
 
     def strat(self, p):
@@ -659,14 +665,47 @@ class Instance:
         - s stands for signal, rinTarget stands for 'ratio invested target'
         - Set s['rinTarget'] between 0 and 1. 0 is 0%, 1 is 100% invested
         """
+        # vars
         s = self.signal
-
+        ma_lens = storage["ma_lens"]
+        num_sigs = len(ma_lens)
         close_data = numpy.array([c['close'] for c in self.candles])
-        mas = talib.SMA(close_data, timeperiod = 20)[-1]
-        mal = talib.SMA(close_data, timeperiod = 100)[-1]
 
+        # get sigs
+        SMAs = dict()
+        class SMA:
+            def __init__(self, ma_len):
+                self.ma_len = ma_len
+                self.arr = talib.SMA(close_data, timeperiod = ma_len)
+                self.price = self.arr[-1]
+                SMAs[ma_len] = self.price
+
+        class SXS:
+            def __init__(self, ma_len_pair):
+                self.pair = ma_len_pair
+                self.trend = "bear"
+                if ma_len_pair[0] not in SMAs:
+                    mas = SMA(ma_len_pair[0])
+                self.mas = SMAs[ma_len_pair[0]]
+                if ma_len_pair[1] not in SMAs:
+                    mal = SMA(ma_len_pair[1])
+                self.mal = SMAs[ma_len_pair[1]]
+                if self.mas > self.mal: self.trend = "bull"
+
+        sigs = list()
+        for i in range(num_sigs):
+            sig = SXS(ma_lens[i])
+            sigs.append(sig)
+        num_sigs = len(sigs)
+
+        # set rinTarget
+        nBulls = 0; nBears = 0
         s['rinTarget'] = 0
-        if mas > mal: s['rinTarget'] = 1
+        for i in range(num_sigs):
+            if sigs[i].trend == "bear": nBears += 1
+            if sigs[i].trend == "bull":
+                nBulls += 1
+                s['rinTarget'] += 1 / num_sigs
 
     def ping(self):
         # check if its time for a new candle
