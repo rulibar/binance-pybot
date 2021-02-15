@@ -55,3 +55,13 @@ v0.1.11 (20-10-31)
 
 v0.1.12 (20-10-31)
 - Revamp of init/strat template
+
+v0.2 (21-02-14)
+- Say exchange on startup along with pair and interval
+- Reduce length of hr by 2
+- Stop saying exchange and pair in log header, add extra hr on each side
+- Add a second log header which says exchange, pair, interval
+- Make the headers the same len by adding extra hrs on the end then trim len
+- Change log to say "Days running" instead of "Days since start"
+- Change log to say "Trades completed" instead of "Trades"
+- Stop saying asset when saying price. "1 USD" instead of "1 USD/XRP"
