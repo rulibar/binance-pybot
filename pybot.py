@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.1.12 (20-10-31)
+Binance Pybot v0.2 (21-02-14)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -78,7 +78,7 @@ class Instance:
         self.asset = str(asset)
         self.pair = self.asset + self.base
         self.interval = int(interval_mins)
-        logger.info("New trader instance started on {} {}m.".format(self.pair, self.interval))
+        logger.info("New trader instance started on {} {} {}m.".format(self.exchange.title(), self.pair, self.interval))
         self.get_params()
 
         self.candles_raw = self._get_candles_raw()
@@ -617,15 +617,16 @@ class Instance:
     def log_update(self, p):
         r = self.performance
 
-        hr = "~~~~~~~"
+        hr = "~~~~~"
         tpd = float()
         if self.days != 0: tpd = self.trades / self.days
         winrate = float()
         if r['W'] + r['L'] != 0: winrate = r['W'] / (r['W'] + r['L'])
-        header = "{} {} {} {} {}".format(self.bot_name, self.version, hr, self.exchange.title(), self.pair)
+        header_1 = "{} {} {} {}".format(3 * hr, self.bot_name, self.version, 9 * hr)[:50]
+        header_2 = "{} {} {} {}m {}".format(3 * hr, self.exchange.title(), self.pair, self.interval, 9 * hr)[:50]
         trades = "{} trades ({} per day)".format(int(self.trades), round(tpd, 2))
         currency = "{} {}".format(fix_dec(p.base), self.base)
-        price = "{} {}/{}".format(fix_dec(p.price), self.base, self.asset)
+        price = "{} {}".format(fix_dec(p.price), self.base)
         assets = "{} {}".format(fix_dec(p.asset), self.asset)
         assetvalue = "{} {}".format(fix_dec(p.positionValue), self.base)
         accountvalue = "{} {}".format(fix_dec(p.size), self.base)
@@ -634,8 +635,9 @@ class Instance:
         botprof = "{}% {},".format(round(100 * r['bProfits'], 2), self.base)
         botprof += " {}% {}".format(round(100 * ((1 + r['bProfits']) / (1 + r['bh'])) - 100, 2), self.asset)
 
-        logger.info("{} {} {}".format(2 * hr, header, 2 * hr))
-        logger.info("Days since start: {} | Trades: {}".format(round(self.days, 2), trades))
+        logger.info(header_1)
+        logger.info(header_2)
+        logger.info("Days running: {} | Trades completed: {}".format(round(self.days, 2), trades))
         logger.info("Currency: {} | Current price: {}".format(currency, price))
         logger.info("Assets: {} | Value of assets: {}".format(assets, assetvalue))
         logger.info("Value of account: {}".format(accountvalue))
@@ -650,7 +652,7 @@ class Instance:
     def init(self, p):
         # Binance Pybot 20/100 SXS
         self.bot_name = "Binance Pybot"
-        self.version = "0.1.12"
+        self.version = "0.2"
         logger.info("Analyzing the market...")
 
         # vars
