@@ -65,3 +65,6 @@ v0.2 (21-02-14)
 - Change log to say "Days running" instead of "Days since start"
 - Change log to say "Trades completed" instead of "Trades"
 - Stop saying asset when saying price. "1 USD" instead of "1 USD/XRP"
+
+v0.2.1 (21-05-15)
+- Fixed a deposit and withdrawal bug experienced by some users
