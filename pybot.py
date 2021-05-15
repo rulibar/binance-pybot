@@ -1,10 +1,11 @@
 """
-Binance Pybot v0.2 (21-02-14)
+Binance Pybot v0.2.1 (21-05-15)
 https://github.com/rulibar/binance-pybot
 """
 
 import os
 import time
+from calendar import timegm as timegm
 import numpy
 import random
 import logging
@@ -441,8 +442,33 @@ class Instance:
 
         # get dws
         try:
-            deposits = client.get_deposit_history(startTime = start_time)['depositList']
-            withdrawals = client.get_withdraw_history(startTime = start_time)['withdrawList']
+            deposits = client.get_deposit_history(startTime = start_time)
+            withdrawals = client.get_withdraw_history(startTime = start_time)
+
+            # deal with differing formats
+            if type(deposits) is dict:
+                deposits = deposits['depositList']
+
+            if type(withdrawals) is dict:
+                withdrawals = withdrawals['withdrawList']
+
+            for deposit in deposits:
+                if 'asset' not in deposit:
+                    deposit['asset'] = str(deposit['coin'])
+                    deposit['creator'] = ''
+                    deposit['amount'] = float(deposit['amount'])
+
+            for withdrawal in withdrawals:
+                if 'asset' not in withdrawal:
+                    withdrawal['asset'] = str(withdrawal['coin'])
+                    withdrawal['withdrawOrderId'] = ''
+                    withdrawal['amount'] = float(withdrawal['amount'])
+                    withdrawal['transactionFee'] = float(withdrawal['transactionFee'])
+
+                if type(withdrawal['applyTime']) is str:
+                    applyTime = time.strptime(withdrawal['applyTime'], '%Y-%m-%d %H:%M:%S')
+                    applyTime = 1000 * timegm(applyTime)
+                    withdrawal['applyTime'] = int(applyTime)
         except Exception as e:
             logger.error("Error getting deposits and withdrawals.\n'{}'".format(e))
             return 0, 0
