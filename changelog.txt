@@ -68,3 +68,9 @@ v0.2 (21-02-14)
 
 v0.2.1 (21-05-15)
 - Fixed a deposit and withdrawal bug experienced by some users
+
+v1.1 (21-9-5)
+- Versioning changed to 2 numbers instead of 3
+- First version of the first generation of non-beta pybot
+- Changed default pair to ETHBTC
+- Added tld='us' when initializing the client
