@@ -1,5 +1,5 @@
 """
-Binance Pybot v0.2.1 (21-05-15)
+Binance Pybot v1.1 (21-9-5)
 https://github.com/rulibar/binance-pybot
 """
 
@@ -15,9 +15,9 @@ from binance.client import Client
 # instance vars
 api_key = ""
 api_secret = ""
-client = Client(api_key, api_secret)
+client = Client(api_key, api_secret, tld='us')
 
-asset = "BTC"; base = "USDT"
+asset = "ETH"; base = "BTC"
 interval_mins = 30
 
 # strategy vars
@@ -678,7 +678,7 @@ class Instance:
     def init(self, p):
         # Binance Pybot 20/100 SXS
         self.bot_name = "Binance Pybot"
-        self.version = "0.2"
+        self.version = "1.1"
         logger.info("Analyzing the market...")
 
         # vars
